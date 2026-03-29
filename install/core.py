@@ -13,7 +13,7 @@ from archinstall.lib.models.users import User
 
 from install.customization import apply_livecd_customizations
 from install.disk import umount_target
-from install.mirrors import setup_mirrors
+from install.mirrors import setup_mirrors, sync_pacman_db
 
 GNOME_PACKAGES = [
     # GNOME 核心
@@ -73,6 +73,7 @@ def perform_installation(
     bootloader_config = BootloaderConfiguration.get_default(uefi)
 
     setup_mirrors()
+    sync_pacman_db()
     umount_target(mountpoint)
 
     logger.info('=== 创建文件系统 ===')
@@ -84,8 +85,12 @@ def perform_installation(
         target=mountpoint,
         disk_config=disk_layout_config,
         kernels=kernels or ['linux-zen'],
+        silent=True,  # 后台线程中不能交互，失败直接抛异常
     ) as installation:
         installation.mount_ordered_layout()
+
+        # 等待 NTP、reflector、keyring 同步（与 archinstall 原版一致）
+        installation.sanity_check()
 
         installation.minimal_installation(
             hostname=hostname,
@@ -98,6 +103,9 @@ def perform_installation(
         installation.enable_service(['gdm', 'NetworkManager', 'bluetooth', 'earlyoom'])
         installation.set_timezone(timezone)
         installation.activate_time_synchronization()
+
+        # 配置 zram（包已在 GNOME_PACKAGES 中，这里写配置并启用服务）
+        installation.setup_swap()
 
         logger.info(f'=== 安装引导加载程序 ({bootloader_config.bootloader.value}) ===')
         installation.add_bootloader(

@@ -97,7 +97,13 @@ def main() -> None:
 
     wipe = ask_coexist_or_wipe(selected_disk)
     if wipe:
-        disk_layout_config = build_disk_layout(selected_disk, uefi)
+        from archinstall.lib.models.device import Size, Unit
+        total_gib = selected_disk.device_info.total_size.convert(Unit.GiB).value
+        separate_home = False
+        if total_gib >= 64:
+            ans = input("是否单独划分 /home 分区？(y/n) [y]: ").strip().lower()
+            separate_home = ans != 'n'
+        disk_layout_config = build_disk_layout(selected_disk, uefi, separate_home=separate_home)
     else:
         try:
             # 用新的分析逻辑

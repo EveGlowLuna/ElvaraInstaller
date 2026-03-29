@@ -16,9 +16,31 @@ Server = https://mirror.nju.edu.cn/archlinux/$repo/os/$arch
 """
 
 
+def _service_state(name: str) -> str:
+    r = subprocess.run(
+        ['systemctl', 'is-active', name],
+        capture_output=True, text=True, check=False,
+    )
+    return r.stdout.strip()
+
+
+def _wait_for_reflector() -> None:
+    """等待 reflector.service 结束，最多 60 秒，防止它覆盖我们写的 mirrorlist"""
+    logger.info('等待 reflector.service 结束...')
+    for _ in range(60):
+        state = _service_state('reflector')
+        if state in ('inactive', 'dead', 'failed', 'exited', ''):
+            break
+        time.sleep(1)
+    else:
+        logger.warning('reflector 超时未结束，继续安装')
+
+
 def setup_mirrors() -> None:
-    """自动选择最快镜像源，失败时写入国内备用镜像"""
-    logger.info('=== 自动选择最快镜像源 ===')
+    """等待 reflector 结束后，写入国内镜像源"""
+    _wait_for_reflector()
+
+    logger.info('=== 配置镜像源 ===')
 
     def write_fallback() -> None:
         Path('/etc/pacman.d/mirrorlist').write_text(FALLBACK_MIRRORS)
@@ -44,3 +66,16 @@ def setup_mirrors() -> None:
         return
 
     write_fallback()
+
+
+def sync_pacman_db() -> None:
+    """同步 pacman 包数据库，写完 mirrorlist 后必须调用"""
+    logger.info('=== 同步 pacman 数据库 ===')
+    for attempt in range(3):
+        r = subprocess.run(['pacman', '-Sy', '--noconfirm'], capture_output=True, check=False)
+        if r.returncode == 0:
+            logger.info('pacman 数据库同步成功')
+            return
+        logger.warning(f'pacman -Sy 失败（第 {attempt + 1} 次）: {r.stderr.decode().strip()}')
+        time.sleep(2)
+    logger.error('pacman 数据库同步失败，安装可能出现问题')

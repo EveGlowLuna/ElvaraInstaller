@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QLineEdit, QComboBox,
     QFormLayout, QGroupBox, QTextEdit, QProgressBar,
     QMessageBox, QSizePolicy,
-    QFrame, QSpinBox,
+    QFrame, QSpinBox, QCheckBox,
 )
 
 from archinstall.lib.disk.device_handler import device_handler
@@ -376,6 +376,11 @@ class DiskPage(QWidget):
         self._alloc_box.setVisible(False)
         root.addWidget(self._alloc_box)
 
+        # 单独 /home 分区选项（清空全盘 + 磁盘 >= 64 GiB 时显示）
+        self._home_check = QCheckBox('单独划分 /home 分区（推荐磁盘 ≥ 64 GiB 时开启）')
+        self._home_check.setVisible(False)
+        root.addWidget(self._home_check)
+
         root.addStretch()
         root.addWidget(_divider())
         root.addSpacing(8)
@@ -402,15 +407,15 @@ class DiskPage(QWidget):
 
         existing = detect_existing_systems(dev)
 
-        # 如果共存面板已展开，直接提交
-        if self._part_box.isVisible() or self._alloc_box.isVisible():
+        # 如果共存面板或 /home 勾选框已展开，直接提交
+        if self._part_box.isVisible() or self._alloc_box.isVisible() or self._home_check.isVisible():
             self._submit(dev)
             return
 
         if not existing:
             # 空盘，直接清空安装
             self._wipe = True
-            self._submit(dev)
+            self._show_home_option(dev)
             return
 
         # 有已有系统，询问是否保留
@@ -421,12 +426,24 @@ class DiskPage(QWidget):
         )
         if reply == QMessageBox.StandardButton.No:
             self._wipe = True
-            self._submit(dev)
+            self._show_home_option(dev)
             return
 
         # 共存模式：分析分区
         self._wipe = False
         self._show_coexist_options(dev)
+
+    def _show_home_option(self, dev) -> None:
+        """清空全盘时，若磁盘 >= 64 GiB 则显示 /home 勾选框，否则直接提交"""
+        from archinstall.lib.models.device import Size, Unit
+        total_gib = dev.device_info.total_size.convert(Unit.GiB).value
+        if total_gib >= 64:
+            self._home_check.setVisible(True)
+        else:
+            self._home_check.setVisible(False)
+            self._submit(dev)
+            return
+        # 勾选框已显示，等用户点下一步
 
     def _show_coexist_options(self, dev) -> None:
         analysis = analyze_coexist_partitions(dev)
@@ -484,7 +501,8 @@ class DiskPage(QWidget):
             self._target_part_info = self._part_items[row]['part_info']
 
         self._alloc_gb = self._size_spin.value()
-        self._on_next(dev, self._wipe, self._target_part_info, self._alloc_gb)
+        separate_home = self._wipe and self._home_check.isChecked()
+        self._on_next(dev, self._wipe, self._target_part_info, self._alloc_gb, separate_home)
 
     def get_selection(self):
         return (
@@ -492,6 +510,7 @@ class DiskPage(QWidget):
             self._wipe,
             self._target_part_info,
             self._alloc_gb,
+            self._wipe and self._home_check.isChecked(),
         )
 
 
@@ -894,12 +913,13 @@ class InstallerWindow(QMainWindow):
     def _go_disk(self):
         self._stack.setCurrentWidget(self._disk_pg)
 
-    def _from_disk(self, device, wipe: bool, target_part_info, alloc_gb: int):
+    def _from_disk(self, device, wipe: bool, target_part_info, alloc_gb: int, separate_home: bool = False):
         """磁盘页确认后，进入系统配置页"""
         self._selected_device = device
         self._wipe = wipe
         self._target_part_info = target_part_info
         self._alloc_gb = alloc_gb
+        self._separate_home = separate_home
         self._stack.setCurrentWidget(self._sys_pg)
 
     def _go_confirm(self):
@@ -912,6 +932,8 @@ class InstallerWindow(QMainWindow):
             f'共存 → {self._target_part_info.path}' if self._target_part_info
             else f'共存（分配 {self._alloc_gb} GB）'
         )
+        if self._wipe and getattr(self, '_separate_home', False):
+            mode += '，单独 /home 分区'
         disk_info = f'{model}  {size}  {path}\n安装模式：{mode}'
 
         sys_cfg  = self._sys_pg.get_config()
@@ -936,7 +958,7 @@ class InstallerWindow(QMainWindow):
         try:
             if self._wipe:
                 from install.disk import build_disk_layout
-                disk_layout = build_disk_layout(dev, self._uefi)
+                disk_layout = build_disk_layout(dev, self._uefi, separate_home=getattr(self, '_separate_home', False))
             else:
                 from install.disk import build_disk_layout_coexist
                 disk_layout = build_disk_layout_coexist(

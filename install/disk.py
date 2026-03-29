@@ -109,8 +109,26 @@ def analyze_coexist_partitions(device) -> dict:
     }
 
 
-def build_disk_layout(selected_disk, uefi: bool) -> DiskLayoutConfiguration:
-    """清空全盘模式：按 UEFI/BIOS 创建标准分区布局"""
+def _calc_root_size(total_size: Size, sector_size: SectorSize) -> Size:
+    """与 archinstall 原版保持一致的 root 分区大小计算"""
+    total_gib = total_size.convert(Unit.GiB).value
+    if total_gib > 500:
+        return Size(50, Unit.GiB, sector_size)
+    elif total_gib < 320:
+        return Size(32, Unit.GiB, sector_size)
+    else:
+        return Size(total_gib // 10, Unit.GiB, sector_size)
+
+
+def build_disk_layout(
+    selected_disk,
+    uefi: bool,
+    separate_home: bool = False,
+) -> DiskLayoutConfiguration:
+    """
+    清空全盘模式：按 UEFI/BIOS 创建标准分区布局。
+    separate_home=True 时单独划分 /home 分区（磁盘 >= 64 GiB 时建议开启）。
+    """
     sector_size: SectorSize = selected_disk.device_info.sector_size
     total_size: Size = selected_disk.device_info.total_size
 
@@ -133,9 +151,12 @@ def build_disk_layout(selected_disk, uefi: bool) -> DiskLayoutConfiguration:
         )
         device_mod.add_partition(efi_part)
         root_start = efi_part.start + efi_part.length
-        root_length = available_space - root_start
     else:
         root_start = Size(1, Unit.MiB, sector_size)
+
+    if separate_home:
+        root_length = _calc_root_size(total_size, sector_size)
+    else:
         root_length = available_space - root_start
 
     root_part = PartitionModification(
@@ -148,6 +169,21 @@ def build_disk_layout(selected_disk, uefi: bool) -> DiskLayoutConfiguration:
         flags=[] if uefi else [PartitionFlag.BOOT],
     )
     device_mod.add_partition(root_part)
+
+    if separate_home:
+        home_start = root_start + root_length
+        home_length = available_space - home_start
+        home_flags = [PartitionFlag.LINUX_HOME] if using_gpt else []
+        home_part = PartitionModification(
+            status=ModificationStatus.Create,
+            type=PartitionType.Primary,
+            start=home_start,
+            length=home_length,
+            fs_type=FilesystemType.Ext4,
+            mountpoint=Path('/home'),
+            flags=home_flags,
+        )
+        device_mod.add_partition(home_part)
 
     return DiskLayoutConfiguration(
         config_type=DiskLayoutType.Default,
