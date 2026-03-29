@@ -247,6 +247,7 @@ def _merge_copy(src: Path, dst: Path) -> None:
 
 _HICOLOR_INDEX = """\
 [Icon Theme]
+Name=hicolor
 Hidden=false
 Comment=Fallback icon theme
 Directories=256x256/apps,128x128/apps,96x96/apps,72x72/apps,64x64/apps,48x48/apps,36x36/apps,32x32/apps,24x24/apps,22x22/apps,16x16/apps,scalable/apps
