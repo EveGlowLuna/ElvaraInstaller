@@ -8,3 +8,4 @@ build
 **/__pycache__
 cmd_history.txt
 install.log
+*.spec
