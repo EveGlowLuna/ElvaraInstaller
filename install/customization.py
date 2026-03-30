@@ -38,6 +38,7 @@ def apply_livecd_customizations(mountpoint: Path, username: str) -> None:
     _setup_plymouth(mountpoint)
     _copy_earlyoom_config(mountpoint)
     _write_zram_config(mountpoint)
+    _copy_elvara_os_tools(mountpoint)
     logger.info('LiveCD 定制内容复制完成')
 
 
@@ -336,6 +337,30 @@ Type=Scalable
 MinSize=1
 MaxSize=512
 """
+
+
+def _copy_elvara_os_tools(mountpoint: Path) -> None:
+    """复制 ElvaraOSTools 可执行文件及其 .desktop 文件到新系统"""
+    src_bin = Path('/usr/local/bin/ElvaraOSTools')
+    src_desktop = Path('/usr/share/applications/elvara-os-tools.desktop')
+
+    if src_bin.is_file():
+        logger.info('复制 ElvaraOSTools 可执行文件...')
+        dst_bin_dir = mountpoint / 'usr/local/bin'
+        dst_bin_dir.mkdir(parents=True, exist_ok=True)
+        dst_bin = dst_bin_dir / 'ElvaraOSTools'
+        shutil.copy2(src_bin, dst_bin)
+        dst_bin.chmod(dst_bin.stat().st_mode | 0o111)
+    else:
+        logger.warning('未找到 /usr/local/bin/ElvaraOSTools，跳过')
+
+    if src_desktop.is_file():
+        logger.info('复制 elvara-os-tools.desktop...')
+        dst_app_dir = mountpoint / 'usr/share/applications'
+        dst_app_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_desktop, dst_app_dir / 'elvara-os-tools.desktop')
+    else:
+        logger.warning('未找到 elvara-os-tools.desktop，跳过')
 
 
 def _patch_pacman_conf(mountpoint: Path) -> None:
