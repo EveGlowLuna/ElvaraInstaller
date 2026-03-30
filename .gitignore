@@ -1,0 +1,10 @@
+*.diff
+dist
+build
+.idea
+.ruff_cache
+.venv
+.vscode
+**/__pycache__
+cmd_history.txt
+install.log
