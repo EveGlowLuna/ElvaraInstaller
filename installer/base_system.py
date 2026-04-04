@@ -4,15 +4,17 @@ import os
 CUSTOM_PACKAGES_PATH = "custom/packages.txt"
 
 def install_base(target: str):
-    packages = 'base linux linux-firmware vim sudo grub'
+    default_packages = ['base', 'linux', 'linux-firmware', 'vim', 'sudo', 'grub']
     try:
         with open(CUSTOM_PACKAGES_PATH) as f:
-            content = f.read().strip()
-            if content != "":
-                packages = content
+            pkgs = []
+            for line in f:
+                line = line.split('#')[0].strip()  # 去掉注释和首尾空白
+                pkgs.extend(line.split())
+            packages = pkgs if pkgs else default_packages
     except Exception:
-        pass
-    args = ['pacstrap', '-K', target] + packages.split()
+        packages = default_packages
+    args = ['pacstrap', '-K', target] + packages
     subprocess.run(args)
 
 def generate_fstab(mount_point: str):
