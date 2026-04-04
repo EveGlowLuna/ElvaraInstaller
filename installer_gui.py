@@ -16,7 +16,17 @@ from PySide6.QtWidgets import (
 
 from installer import disk, base_system, efi
 from installer.log import setup_gui_logging
-from custom import custom
+import importlib.util
+import sys
+import os
+
+def _load_custom():
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    custom_path = os.path.join(os.path.dirname(base) if getattr(sys, 'frozen', False) else base, 'custom', 'custom.py')
+    spec = importlib.util.spec_from_file_location('custom.custom', custom_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 ICON_PATH = '/usr/share/pixmaps/elvara.png'
@@ -218,7 +228,7 @@ EOF
             self.step.emit(4, INSTALL_STEPS[4][0])
             shutil.copy('custom/customize_system.sh', '/mnt/root/')
             base_system.arch_chroot('/mnt', ['bash', '/root/customize_system.sh'])
-            custom.run('/mnt')
+            _load_custom().run('/mnt')
 
             # 步骤 5：引导
             self.step.emit(5, INSTALL_STEPS[5][0])

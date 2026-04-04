@@ -1,6 +1,16 @@
 from installer import disk, base_system, efi
-from custom import custom
 import shutil
+import importlib.util
+import sys
+import os
+
+def _load_custom():
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    custom_path = os.path.join(os.path.dirname(base) if getattr(sys, 'frozen', False) else base, 'custom', 'custom.py')
+    spec = importlib.util.spec_from_file_location('custom.custom', custom_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 def get_disk_root(selected_disk_index: int):
     result = disk.get_disk_children(selected_disk_index)
@@ -88,7 +98,7 @@ EOF
     base_system.arch_chroot('/mnt', ['grub-install', '--target=x86_64-efi' if efi.get_boot_mode() == "uefi" else "--target=i386-efi", '--efi-directory=/boot', '--bootloader-id=GRUB'])
     base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
     # 执行自定义逻辑
-    custom.run('/mnt')
+    _load_custom().run('/mnt')
 
 
 
