@@ -7,3 +7,5 @@ pyinstaller --onefile \
     --exclude-module custom \
     --add-data "installer:installer" \
     main.py
+
+mv dist/main dist/ElvaraInstaller
