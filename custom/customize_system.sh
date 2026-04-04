@@ -24,3 +24,34 @@ systemctl enable gdm
 systemctl enable NetworkManager
 systemctl enable bluetooth
 
+git clone https://github.com/EveGlowLuna/ElvaraOS.git ElvaraCustom
+cd ElvaraCustom/airootfs
+cp etc/default/* /etc/default/
+cp etc/profile.d/fcitx5.sh /etc/profile.d/
+cp -a etc/skel/.config /etc/skel
+rm  /etc/skel/.config/systemd/user/trust-installer-desktop.service
+
+username=$(find /home -maxdepth 1 -mindepth 1 -type d -printf "%f\n" -quit)
+target_dir="/home/${username}/.local/"
+mkdir -p "$target_dir"
+cp -a etc/skel/.local/ "$target_dir"
+
+rm /etc/os-release
+cp etc/os-release /etc/os-release
+
+cd ..
+
+mkdir -p /tmp/dconf-profile
+mkdir -p "/home/${username}/.config/dconf"
+cp root/dconf-settings.txt /tmp/dconf-profile/user.ini
+dconf compile "/home/${username}/.config/dconf/user" /tmp/dconf-profile
+cp usr/local/bin/ElvaraOSTools /usr/local/bin/ElvaraOSTools
+cp -a usr/local/share/applications/* /usr/local/share/applications/
+cp -a usr/local/share/gnome-shell/* /usr/local/share/gnome-shell/
+cp -a usr/local/share/pixmaps/* /usr/local/share/pixmaps/
+
+cd ../..
+
+rm -rf ElvaraCustom
+
+exit 0
