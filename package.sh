@@ -9,3 +9,9 @@ pyinstaller --onefile \
     main.py
 
 mv dist/main dist/ElvaraInstaller
+
+pyinstaller --onefile \
+    --distpath dist/custom \
+    custom/desktop_picker.py
+
+cp -r custom dist/custom
