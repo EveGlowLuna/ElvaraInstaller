@@ -1,0 +1,40 @@
+[config]
+
+[templates]
+
+# User-defined templates
+# Add your custom templates below
+# Example:
+# [templates.myapp]
+# input_path = "~/.config/noctalia/templates/myapp.css"
+# output_path = "~/.config/myapp/theme.css"
+# post_hook = "myapp --reload-theme"
+
+# Remove this section and add your own templates
+#[templates.placeholder]
+#input_path = "/etc/xdg/quickshell/noctalia-shell/Assets/Templates/noctalia.json"
+#output_path = "/home/shorin/.cache/noctalia/placeholder.json"
+
+[templates.pywalfox]
+input_path = '~/.config/noctalia/templates/pywalfox-colors.json'
+output_path = '~/.cache/wal/colors.json'
+post_hook = 'pywalfox update &'
+
+[templates.fcitx5]
+input_path = '~/.config/noctalia/templates/fcitx5-theme.conf'
+output_path = '~/.local/share/fcitx5/themes/Matugen/theme.conf'
+post_hook= 'fcitx5 -r & disown '
+
+[templates.starship]
+input_path = '~/.config/noctalia/templates/starship-colors.toml'
+output_path = '~/.config/starship.toml'
+
+[templates.gtk-folder]
+input_path = '~/.config/noctalia/templates/gtk-folder/recolor.sh'
+output_path = '~/.cache/matugen/recoloricons.sh'
+post_hook = 'bash ~/.cache/matugen/recoloricons.sh &'
+
+[templates.fastfetch]
+input_path = '~/.config/noctalia/templates/fastfetch-config.jsonc'
+output_path = '~/.config/fastfetch/config.jsonc'
+

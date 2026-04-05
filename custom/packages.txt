@@ -1,8 +1,8 @@
 # 基础系统
 base
 base-devel
-linux-zen
-linux-zen-headers
+linux
+linux-headers
 linux-firmware
 linux-firmware-marvell
 amd-ucode
@@ -78,37 +78,6 @@ libglvnd
 xf86-video-vesa
 xorg-server
 xorg-xinit
-
-# 桌面环境 (GNOME)
-gnome-shell
-gnome-session
-gnome-settings-daemon
-gnome-control-center
-gnome-keyring
-gdm
-xdg-desktop-portal-gnome
-xdg-user-dirs-gtk
-gvfs
-gvfs-mtp
-gvfs-gphoto2
-
-# GNOME 应用
-nautilus
-gnome-calculator
-gnome-backgrounds
-gnome-themes-extra
-adwaita-icon-theme
-gnome-logs
-gnome-font-viewer
-gnome-terminal
-gnome-tweaks
-gnome-disk-utility
-gnome-system-monitor
-gnome-text-editor
-loupe
-baobab
-evince
-file-roller
 
 # 多媒体
 vlc

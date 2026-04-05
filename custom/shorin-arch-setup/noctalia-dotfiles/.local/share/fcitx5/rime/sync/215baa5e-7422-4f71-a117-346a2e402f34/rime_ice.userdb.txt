@@ -1,0 +1,30 @@
+# Rime user dictionary
+#@/db_name	rime_ice
+#@/db_type	userdb
+#@/rime_version	1.16.1
+#@/tick	5
+#@/user_id	215baa5e-7422-4f71-a117-346a2e402f34
+dan shi 	但是	c=0 d=0.0995012 t=5
+deng ji fen lei 	等级分类	c=0 d=0.0995012 t=5
+du li kai fa 	独立开发	c=0 d=0.0995012 t=5
+fa jia lian sai 	法甲联赛	c=0 d=0.0985112 t=5
+fa jia lian sai ken de ji feng kuang luan shuo luan dong kuang feng ju lang ke shi jiao du fang 	法甲联赛肯德基疯狂乱说乱动狂风巨浪可视角度放	c=1 d=0.99005 t=5
+fa kuan 	罚款	c=0 d=0.0995012 t=5
+fan kai le 	翻开了	c=0 d=0.0995012 t=5
+fang 	放	c=0 d=0.0985112 t=5
+feng kou lang jian shang 	风口浪尖上	c=0 d=0.0995012 t=5
+jiao liao shou kao 	脚镣手铐	c=0 d=0.0995012 t=5
+jiao liao shou kao deng ji fen lei ke jian shao du li kai fa 	脚镣手铐等级分类可减少独立开发	c=1 d=1 t=5
+kai fa jian she 	开发建设	c=0 d=0.0995012 t=5
+ke jian shao 	可减少	c=0 d=0.0995012 t=5
+ke shi jiao du 	可视角度	c=0 d=0.0985112 t=5
+ken de ji feng kuang 	肯德基疯狂	c=0 d=0.0985112 t=5
+kuang feng ju lang 	狂风巨浪	c=0 d=0.0985112 t=5
+ling du kong jian 	零度空间	c=0 d=0.198506 t=5
+luan shuo luan dong 	乱说乱动	c=0 d=0.0985112 t=5
+ni shuo de dui 	你说得对	c=1 d=0.995012 t=5
+she ji de 	设计的	c=0 d=0.0995012 t=5
+she ji de feng kou lang jian shang ling du kong jian fan kai le dan shi 	设计的风口浪尖上零度空间翻开了但是	c=1 d=1 t=5
+she li deng ji 	设立登记	c=0 d=0.0995012 t=5
+shi jian dao le 	时间到了	c=0 d=0.0995012 t=5
+shi jian dao le kai fa jian she ling du kong jian fa kuan she li deng ji 	时间到了开发建设零度空间罚款设立登记	c=1 d=1 t=5

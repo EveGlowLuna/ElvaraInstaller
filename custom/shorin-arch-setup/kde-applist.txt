@@ -1,0 +1,20 @@
+# --- Shell & Terminal Enhancements ---
+fish                                     # Friendly Interactive Shell
+starship                                 # Cross-shell customizable prompt
+eza                                      # Modern replacement for 'ls' (with icons)
+zoxide                                   # Smarter 'cd' command (directory jumper)
+fastfetch                                # Fast system information fetcher (Neofetch alternative)
+imagemagick                              # Powerful image manipulation tools (CLI)
+jq                                       # Command-line JSON processor
+timg
+bat                                      # Better 'cat' command
+# --- KDE Applications ---
+ark                                      # Archiving Tool (Zip, Tar, 7z GUI)
+kate                                     # Advanced Text Editor for KDE
+plasma-login-manager                     # new DM for KDE Plasma
+ttf-jetbrains-mono-nerd                  # JetBrains Mono Font (Nerd Font Patched)
+
+# --- KDE Visual Effects (AUR) ---
+#AUR:kwin-effect-rounded-corners-git      # Force rounded corners on all windows (Shader based)
+AUR:kwin-effects-geometry-change         # KWin animation for window resizing/geometry changes
+AUR:shorin-contrib-git                   # shorin utils

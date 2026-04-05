@@ -1,0 +1,46 @@
+# Global options
+title-text: ""
+desktop-image: "background.png"
+desktop-color: "#000000"
+terminal-font: "Victor Mono Italic 20"
+terminal-box: "terminal_box_*.png"
+terminal-left: "0"
+terminal-top: "0"
+terminal-width: "100%"
+terminal-height: "100%"
+terminal-border: "0"
+
+# Boot menu
++ boot_menu {
+  left = 17%
+  top = 53%
+  width = 47%
+  height = 65%
+  item_font =  "Victor Mono Bold Italic 24"
+  item_color = "#cccccc"
+  selected_item_color = "#ffffff"
+  icon_width = 50
+  icon_height = 50
+  item_icon_space = 20
+  item_height = 40
+  item_padding = 2
+  item_spacing = 10
+  selected_item_pixmap_style = "select_*.png"
+}
+
+
+# Countdown
++ label {
+  # [修改] 距离左侧 0，占满全宽，并使用 center 居中对齐，保证在不同分辨率下绝对居中
+  left = 0
+  width = 100%
+  align = "center"
+  
+  # [修改] 垂直位置，90% 代表距离屏幕顶部 90% 的位置，即屏幕底部区域 (可根据需求微调为 85% 或 95%)
+  top = 90%
+  
+  id = "__timeout__"
+  text = "Selected OS will start in %d seconds"
+  color = "#cccccc"
+  font = "Victor Mono Bold Italic 28"
+}

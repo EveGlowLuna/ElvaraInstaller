@@ -1,0 +1,45 @@
+# --- Standard Packages ---
+gdu                                      # TUI Disk Usage Analyzer
+baobab                                   # GUI Disk Usage Analyzer
+mission-center                           # System Monitor (Task Manager style)
+gnome-disk-utility                       # Disk Management Utility (Disks)
+gnome-font-viewer                        # manage fonts easily
+fcitx5-mozc                              # Japanese Input Method
+rime-wubi                                # wubi input method
+firefox                                  # the best browser on linux
+transmission-gtk                         # BitTorrent Client
+localsend                                # send files to other devices
+nm-connection-editor                     # Advanced network editor
+gnome-calendar                           # calendar
+gnome-clocks                             # clocks
+gamescope                                # gaming compositor made by Valve
+heroic-games-launcher-bin                # Playing Epic games
+lutris                                   # Gaming outside steam
+steam                                    # Gaming Platform (Valve)
+protonplus                               # manage proton 
+mangohud                                 # OSD tool for gaming (like msi afterburner)
+lact                                     # GPU Control Tool (Overclocking/Fan)
+wine                                     # run windows exe 
+virt-manager                             # KVM qemu virtual machine
+lazyvim                                  # Great preset of neovim 
+neovim                                   # Advanced version of vim 
+mpv                                      # Minimalist High Performance Video Player
+obs-studio                               # OBS Studio (Streaming & Recording)
+upscaler                                 # image upscaler (make it more clear)
+yazi                                     # great tui file manager
+flatseal                                 # flatpak permission manager 
+pavucontrol                              # sound config GUI
+
+# --- AUR Packages ---
+AUR:flclash-bin                          # Sometimes a detour is necessary to solve a problem
+AUR:linuxqq-appimage                     # Tencent QQ (AppImage)
+AUR:wechat-appimage                      # WeChat (AppImage)
+AUR:lsfg-vk-bin                          # yellow duck frame generator
+AUR:mangojuice-bin                       # GUI for mangohud                
+AUR:video-downloader                     # Download youtube or bilibili videos
+AUR:visual-studio-code-bin               # vscode 
+AUR:pins-git			         # Manage .desktop
+
+# --- Flatpak Packages ---       
+flatpak:com.github.wwmm.easyeffects      # Audio Effects for PipeWire 
+flatpak:it.mijorus.gearlever             # AppImage Manager

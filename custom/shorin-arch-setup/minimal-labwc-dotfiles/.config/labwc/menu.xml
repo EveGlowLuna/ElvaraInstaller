@@ -1,0 +1,72 @@
+<?xml version="1.0" ?>
+<openbox_menu>
+
+  <!-- =============================== -->
+  <!-- 1. 窗口管理子菜单               -->
+  <!-- =============================== -->
+  <menu id="window-management" label="🪟 窗口高级操作">
+    <item label="切换无边框模式 (去掉标题栏)"><action name="ToggleDecorations"/></item>
+    <item label="切换窗口置顶"><action name="ToggleAlwaysOnTop"/></item>
+    <item label="窗口居中"><action name="AutoPlace" policy="center" /></item>
+    <separator />
+    <item label="最大化"><action name="ToggleMaximize"/></item>
+    <item label="全屏"><action name="ToggleFullscreen"/></item>
+  </menu>
+
+<!-- =============================== -->
+  <!-- 2. 系统配置与修改子菜单         -->
+  <!-- =============================== -->
+  <menu id="config-menu" label="⚙️ 配置中心">
+    <!-- 使用 sh -c 来展开 $EDITOR 环境变量，启动 foot 终端运行该编辑器 -->
+    <item label="编辑 主配置 (rc.xml)">
+      <action name="Execute" command="sh -c 'foot ${EDITOR:-vim} ~/.config/labwc/rc.xml'"/>
+    </item>
+    
+    <item label="编辑 自启动 (autostart)">
+      <action name="Execute" command="sh -c 'foot ${EDITOR:-vim} ~/.config/labwc/autostart'"/>
+    </item>
+    
+    <item label="编辑 环境变量 (environment)">
+      <action name="Execute" command="sh -c 'foot ${EDITOR:-vim} ~/.config/labwc/environment'"/>
+    </item>
+    
+    <item label="编辑 右键菜单 (menu.xml)">
+      <action name="Execute" command="sh -c 'foot ${EDITOR:-vim} ~/.config/labwc/menu.xml'"/>
+    </item>
+    
+    <separator />
+    <item label="🔄 重载 Labwc 配置"><action name="Reconfigure"/></item>
+  </menu>
+
+  <!-- =============================== -->
+  <!-- 根菜单 (Root Menu) 主体         -->
+  <!-- =============================== -->
+  <menu id="root-menu" label="">
+    
+    <!-- 常用应用区 -->
+    <separator label="常用应用" />
+    <item label="终端 (Terminal)"><action name="Execute" command="lab-sensible-terminal"/></item>
+    <item label="浏览器 (Firefox)"><action name="Execute" command="firefox"/></item>
+    <item label="文件管理 (Thunar)"><action name="Execute" command="Thunar"/></item>
+    <item label="壁纸设置 (Waypaper)"><action name="Execute" command="waypaper"/></item>
+    
+    <separator label="任务管理" />
+    <!-- 引用 labwc 内置的“所有工作区窗口列表”菜单 -->
+    <menu id="client-list-combined-menu" />
+    
+    <!-- 这里演示 PipeMenu (动态菜单)，如果你安装了 labwc-menu-generator，它可以自动生成所有已安装软件的分类列表 -->
+    <!-- 如果没有安装这个软件，可以先注释掉这行 -->
+    <!-- <menu id="apps-menu" label="📦 所有程序" execute="labwc-menu-generator" /> -->
+
+    <separator label="系统" />
+    <!-- 引入上面的子菜单 -->
+    <menu id="window-management" />
+    <menu id="config-menu" />
+    
+    <separator />
+    <!-- 电源与锁屏 -->
+    <item label="锁定屏幕"><action name="Execute" command="hyprlock -c ~/.config/labwc/hyprlock.conf"/></item>
+    <item label="电源菜单"><action name="Execute" command="~/.config/labwc/scripts/exit-menu"/></item>
+
+  </menu>
+</openbox_menu>

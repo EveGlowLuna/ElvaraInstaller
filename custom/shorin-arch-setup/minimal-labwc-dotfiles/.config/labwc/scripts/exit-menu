@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+# 定义带有图标的选项 (需要安装 Nerd Fonts 才能正确显示图标)
+OPTIONS="注销 (Logout)\n休眠 (Suspend)\n重启 (Reboot)\n关机 (Shutdown)\n取消 (Cancel)"
+
+CHOICE=$(printf "$OPTIONS" | fuzzel --dmenu --prompt "电源菜单: " --lines 5 --width 20)
+
+case "$CHOICE" in
+    "注销 (Logout)")
+        labwc --exit
+        ;;
+    "休眠 (Suspend)")
+        systemctl suspend
+        ;;
+    "重启 (Reboot)")
+        systemctl reboot
+        ;;
+    "关机 (Shutdown)")
+        systemctl poweroff
+        ;;
+    *)
+        exit 0
+        ;;
+esac
