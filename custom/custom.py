@@ -8,8 +8,16 @@ from installer import base_system
 _RESULT_FILE = '/tmp/elvara_desktop_choice'
 
 
-def run(mount_point: str, username: str) -> None:
+def run(mount_point: str) -> None:
     desktop_env = _pick_desktop()
+    username = _get_username(mount_point)
+
+    # 复制并执行 customize_system.sh（pacman优化、装yay、Elvara标识）
+    custom_dir = os.path.dirname(os.path.abspath(__file__))
+    customize_sh = os.path.join(custom_dir, 'customize_system.sh')
+    shutil.copy(customize_sh, os.path.join(mount_point, 'root', 'customize_system.sh'))
+    base_system.arch_chroot(mount_point, ['bash', '/root/customize_system.sh'])
+    os.remove(os.path.join(mount_point, 'root', 'customize_system.sh'))
 
     shorin_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'shorin-arch-setup')
     shorin_dst = os.path.join(mount_point, 'root', 'shorin-arch-setup')
@@ -42,3 +50,16 @@ def _pick_desktop() -> str:
             return f.read().strip() or 'none'
     except FileNotFoundError:
         return 'none'
+
+
+def _get_username(mount_point: str) -> str:
+    passwd = os.path.join(mount_point, 'etc', 'passwd')
+    try:
+        with open(passwd) as f:
+            for line in f:
+                parts = line.strip().split(':')
+                if len(parts) >= 4 and parts[2] == '1000':
+                    return parts[0]
+    except Exception:
+        pass
+    return 'user'

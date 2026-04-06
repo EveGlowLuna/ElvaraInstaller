@@ -4,34 +4,28 @@
 # 00-utils.sh - The "TUI" Visual Engine (v4.0)
 # ==============================================================================
 
-# --- 1. 颜色与样式定义 (ANSI) ---
-# 注意：这里定义的是字面量字符串，需要 echo -e 来解析
-export NC='\033[0m'
-export BOLD='\033[1m'
-export DIM='\033[2m'
-export ITALIC='\033[3m'
-export UNDER='\033[4m'
-export H_MAGENTA='\033[1;35m'
-# 常用高亮色
-export H_RED='\033[1;31m'
-export H_GREEN='\033[1;32m'
-export H_YELLOW='\033[1;33m'
-export H_BLUE='\033[1;34m'
-export H_PURPLE='\033[1;35m'
-export H_CYAN='\033[1;36m'
-export H_WHITE='\033[1;37m'
-export H_GRAY='\033[1;90m'
-
-# 背景色 (用于标题栏)
-export BG_BLUE='\033[44m'
-export BG_PURPLE='\033[45m'
-
-# 符号定义
-export TICK="${H_GREEN}✔${NC}"
-export CROSS="${H_RED}✘${NC}"
-export INFO="${H_BLUE}ℹ${NC}"
-export WARN="${H_YELLOW}⚠${NC}"
-export ARROW="${H_CYAN}➜${NC}"
+# --- 1. 颜色与样式定义 (全部清空，安装器环境不需要美化) ---
+export NC=''
+export BOLD=''
+export DIM=''
+export ITALIC=''
+export UNDER=''
+export H_MAGENTA=''
+export H_RED=''
+export H_GREEN=''
+export H_YELLOW=''
+export H_BLUE=''
+export H_PURPLE=''
+export H_CYAN=''
+export H_WHITE=''
+export H_GRAY=''
+export BG_BLUE=''
+export BG_PURPLE=''
+export TICK='[OK]'
+export CROSS='[FAIL]'
+export INFO='[INFO]'
+export WARN='[WARN]'
+export ARROW='>>'
 
 
 check_root() {
@@ -143,86 +137,68 @@ write_log() {
     echo "[$(date '+%H:%M:%S')] [$1] $clean_msg" >> "$TEMP_LOG_FILE"
 }
 
-# --- 3. 视觉组件 (TUI Style) ---
+# --- 3. 视觉组件 (简化版，无框线) ---
 
-# 绘制分割线
 hr() {
-    printf "${H_GRAY}%*s${NC}\n" "${COLUMNS:-80}" '' | tr ' ' '─'
+    echo "----------------------------------------"
 }
 
-# 绘制大标题 (Section)
 section() {
     local title="$1"
     local subtitle="$2"
     echo ""
-    echo -e "${H_PURPLE}╭──────────────────────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "${H_PURPLE}│${NC} ${BOLD}${H_WHITE}$title${NC}"
-    echo -e "${H_PURPLE}│${NC} ${H_CYAN}$subtitle${NC}"
-    echo -e "${H_PURPLE}╰──────────────────────────────────────────────────────────────────────────────╯${NC}"
+    echo "=== $title ==="
+    echo "    $subtitle"
+    echo ""
     write_log "SECTION" "$title - $subtitle"
 }
 
-# 绘制键值对信息
 info_kv() {
     local key="$1"
     local val="$2"
     local extra="$3"
-    printf "   ${H_BLUE}●${NC} %-15s : ${BOLD}%s${NC} ${DIM}%s${NC}\n" "$key" "$val" "$extra"
+    echo "  $key: $val $extra"
     write_log "INFO" "$key=$val"
 }
 
-# 普通日志
 log() {
-    echo -e "   $ARROW $1"
+    echo ">> $1"
     write_log "LOG" "$1"
 }
 
-# 成功日志
 success() {
-    echo -e "   $TICK ${H_GREEN}$1${NC}"
+    echo "[OK] $1"
     write_log "SUCCESS" "$1"
 }
 
-# 警告日志 (突出显示)
 warn() {
-    echo -e "   $WARN ${H_YELLOW}${BOLD}WARNING:${NC} ${H_YELLOW}$1${NC}"
+    echo "[WARN] $1"
     write_log "WARN" "$1"
 }
 
-# 错误日志 (非常突出)
 error() {
-    echo -e ""
-    echo -e "${H_RED}   ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-    echo -e "${H_RED}   ┃  ERROR: $1${NC}"
-    echo -e "${H_RED}   ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-    echo -e ""
+    echo ""
+    echo "[ERROR] $1"
+    echo ""
     write_log "ERROR" "$1"
 }
 
-# --- 4. 核心：命令执行器 (Command Exec) ---
+# --- 4. 核心：命令执行器 ---
 exe() {
     local full_command="$*"
-    
-    # Visual: 显示正在运行的命令
-    echo -e "   ${H_GRAY}┌──[ ${H_MAGENTA}EXEC${H_GRAY} ]────────────────────────────────────────────────────${NC}"
-    echo -e "   ${H_GRAY}│${NC} ${H_CYAN}$ ${NC}${BOLD}$full_command${NC}"
-    
+    echo "$ $full_command"
     write_log "EXEC" "$full_command"
-    
-    # Run the command
     "$@"
     local status=$?
-    
     if [ $status -eq 0 ]; then
-        echo -e "   ${H_GRAY}└──────────────────────────────────────────────────────── ${H_GREEN}OK${H_GRAY} ─┘${NC}"
+        echo "[OK]"
     else
-        echo -e "   ${H_GRAY}└────────────────────────────────────────────────────── ${H_RED}FAIL${H_GRAY} ─┘${NC}"
+        echo "[FAIL] exit code: $status"
         write_log "FAIL" "Exit Code: $status"
         return $status
     fi
 }
 
-# 静默执行
 exe_silent() {
     "$@" > /dev/null 2>&1
 }

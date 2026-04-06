@@ -1,9 +1,14 @@
 import subprocess
 import os
 
-# 相对于本文件所在目录定位 packages.txt，打包后也能找到
-_HERE = os.path.dirname(os.path.abspath(__file__))
-CUSTOM_PACKAGES_PATH = os.path.join(os.path.dirname(_HERE), 'custom', 'packages.txt')
+# packages.txt 和可执行文件同级的 custom/ 目录里
+# 打包后用 sys.executable 定位，未打包用本文件的上级目录
+import sys as _sys
+if getattr(_sys, 'frozen', False):
+    _BASE = os.path.dirname(_sys.executable)
+else:
+    _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CUSTOM_PACKAGES_PATH = os.path.join(_BASE, 'custom', 'packages.txt')
 
 # 日志回调，GUI 安装时由 setup_gui_logging 设置
 _log_callback = None
@@ -28,6 +33,10 @@ def _log(msg: str):
         pass
 
 
+import re as _re
+_ANSI_ESCAPE = _re.compile(rb'\x1b\[[0-9;]*[mGKHF]|\x1b\][^\x07]*\x07|\r')
+
+
 def _run(args: list, **kwargs) -> subprocess.CompletedProcess:
     """运行子进程，实时把 stdout/stderr 输出到日志"""
     _log(f'$ {" ".join(str(a) for a in args)}')
@@ -35,14 +44,13 @@ def _run(args: list, **kwargs) -> subprocess.CompletedProcess:
         args,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True,
         **kwargs,
     )
-    output_lines = []
-    for line in process.stdout:
-        line = line.rstrip('\n')
-        output_lines.append(line)
-        _log(line)
+    for raw_line in process.stdout:
+        clean = _ANSI_ESCAPE.sub(b'', raw_line)
+        line = clean.decode('utf-8', errors='replace').rstrip('\n')
+        if line:
+            _log(line)
     process.wait()
     if process.returncode != 0:
         raise subprocess.CalledProcessError(process.returncode, args)
@@ -76,7 +84,18 @@ def install_base(target: str) -> None:
             packages = pkgs if pkgs else default_packages
     except Exception:
         packages = default_packages
-    _run(['sudo', 'pacstrap', '-K', target] + packages)
+
+    for attempt in range(1, 4):
+        try:
+            _run(['sudo', 'pacstrap', '-K', target] + packages)
+            return
+        except subprocess.CalledProcessError:
+            if attempt < 3:
+                _log(f'pacstrap 第 {attempt} 次失败，10秒后重试...')
+                import time
+                time.sleep(10)
+            else:
+                raise
 
 
 def generate_fstab(mount_point: str) -> None:
@@ -90,6 +109,15 @@ def generate_fstab(mount_point: str) -> None:
         if result.stdout:
             _log(result.stdout)
         f.write(result.stdout)
+
+
+def write_file(mount_point: str, path: str, content: str, mode: str = 'w') -> None:
+    """直接写文件到挂载点，比通过 arch-chroot 更可靠"""
+    full_path = f'{mount_point}{path}'
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    _log(f'写入 {full_path}')
+    with open(full_path, mode) as f:
+        f.write(content)
 
 
 def arch_chroot(mount_point: str, system: list[str], out: str = '', out_mode: str = 'w'):

@@ -91,27 +91,24 @@ def main():
     base_system.install_base('/mnt')
     base_system.generate_fstab('/mnt')
 
-    base_system.arch_chroot('/mnt', ['bash', '-c', 'echo "zh_CN.UTF-8 UTF-8" >> /etc/locale.gen'])
+    base_system.write_file('/mnt', '/etc/locale.gen', 'zh_CN.UTF-8 UTF-8\n', 'a')
     base_system.arch_chroot('/mnt', ['locale-gen'])
-    base_system.arch_chroot('/mnt', ['bash', '-c', 'echo "LANG=zh_CN.UTF-8" > /etc/locale.conf'])
+    base_system.write_file('/mnt', '/etc/locale.conf', 'LANG=zh_CN.UTF-8\n')
     base_system.arch_chroot('/mnt', ['ln', '-sf', f'/usr/share/zoneinfo/{timezone}', '/etc/localtime'])
-    base_system.arch_chroot('/mnt', ['bash', '-c', f'echo "{uhost}" > /etc/hostname'])
-    base_system.arch_chroot('/mnt', ['bash', '-c', f"""cat > /etc/hosts << EOF
-127.0.0.1   localhost
-::1         localhost
-127.0.1.1   {uhost}.localdomain   {uhost}
-EOF"""])
-    base_system.arch_chroot('/mnt', ['bash', '-c', f'echo "KEYMAP={kb_layout}" > /etc/vconsole.conf'])
+    base_system.write_file('/mnt', '/etc/hostname', f'{uhost}\n')
+    base_system.write_file('/mnt', '/etc/hosts',
+        f'127.0.0.1   localhost\n::1         localhost\n127.0.1.1   {uhost}.localdomain   {uhost}\n')
+    base_system.write_file('/mnt', '/etc/vconsole.conf', f'KEYMAP={kb_layout}\n')
 
     # 创建用户
     base_system.create_user('/mnt', username)
     base_system.set_passwd('/mnt', username, userpwd)
     base_system.set_passwd('/mnt', 'root', userpwd)
-    base_system.arch_chroot('/mnt', ['bash', '-c', 'mkdir -p /etc/sudoers.d && echo "%wheel ALL=(ALL:ALL) ALL" > /etc/sudoers.d/wheel'])
+    base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
     base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
 
-    shutil.copy('custom/customize_system.sh', '/mnt/root/')
-    base_system.arch_chroot('/mnt', ['bash', '/root/customize_system.sh'])
+    # 所有配置写完后重建 initramfs
+    base_system.arch_chroot('/mnt', ['mkinitcpio', '-P'])
 
     boot_mode = efi.get_boot_mode()
     if boot_mode == 'uefi':
@@ -124,7 +121,7 @@ EOF"""])
         base_system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', raw_disk])
     base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
 
-    _load_custom().run('/mnt', username)
+    _load_custom().run('/mnt')
     base_system.umount_all()
 
 

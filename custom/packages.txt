@@ -108,20 +108,11 @@ wine-mono
 gamemode
 
 # 系统优化与安全
-go
 reflector
 rsync
 openssl
 zram-generator
 earlyoom
-plymouth
-tpm2-tools
-tpm2-tss
-pcsclite
-libfido2
-fuse2
-openpgp-card-tools
-sequoia-sq
 
 # 其他工具
 xdg-utils

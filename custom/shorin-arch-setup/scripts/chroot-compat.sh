@@ -25,25 +25,30 @@ echo "$USERNAME" > "$MOUNT/tmp/shorin_install_user"
 find "$SCRIPTS" -name "*.sh" -exec sed -i \
     's/systemctl enable --now/systemctl enable/g' {} \;
 
-# 3. patch wineboot：Wine 初始化需要显示环境，跳过
+# 3. patch 03-user.sh：删掉清除用户名缓存的整个 if 块，保留缓存让 detect_target_user 直接读
+sed -i '/if \[ -f.*shorin_install_user/,/^fi$/d' "$SCRIPTS/03-user.sh"
+
+# 4. patch wineboot：Wine 初始化需要显示环境，跳过
 # 用户首次运行 Wine 程序时会自动初始化
 find "$SCRIPTS" -name "*.sh" -exec sed -i \
     '/wineboot/d; /wineserver/d' {} \;
 
-# 4. patch virsh net-start：libvirtd 没运行，跳过
+# 5. patch virsh net-start：libvirtd 没运行，跳过
 # net-autostart 已设置，重启后自动生效
 find "$SCRIPTS" -name "*.sh" -exec sed -i \
     '/virsh net-start/d' {} \;
 
-# 5. patch flatpak install：chroot 里 flatpak 无法安装应用，跳过
+# 6. patch flatpak install：chroot 里 flatpak 无法安装应用，跳过
 find "$SCRIPTS" -name "*.sh" -exec sed -i \
     '/flatpak install/d' {} \;
 
-# 6. 写入主执行脚本
+# 7. 写入主执行脚本
 cat > "$MOUNT/root/run-shorin.sh" << SCRIPT
 #!/bin/bash
 export SHELL=\$(command -v bash)
 export DESKTOP_ENV="$DESKTOP_ENV"
+export NO_COLOR=1
+export TERM=dumb
 
 BASE_DIR="/root/shorin-arch-setup"
 SCRIPTS_DIR="\$BASE_DIR/scripts"
