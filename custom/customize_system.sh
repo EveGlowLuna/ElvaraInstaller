@@ -32,14 +32,25 @@ cd /tmp/ElvaraCustom/airootfs
 rm -f /etc/os-release
 cp etc/os-release /etc/os-release
 
-mkdir -p /usr/local/share/pixmaps
-[ -d usr/local/share/pixmaps ] && cp -a usr/local/share/pixmaps/. /usr/local/share/pixmaps/ || true
+# pixmaps
+mkdir -p /usr/share/pixmaps
+[ -d usr/share/pixmaps ] && cp -a usr/share/pixmaps/. /usr/share/pixmaps/ || true
 
-cp usr/local/bin/ElvaraOSTools /usr/local/bin/ElvaraOSTools
-chmod +x /usr/local/bin/ElvaraOSTools
+# applications
+mkdir -p /usr/share/applications
+[ -d usr/share/applications ] && cp -a usr/share/applications/. /usr/share/applications/ || true
 
-mkdir -p /usr/local/share/applications
-[ -d usr/local/share/applications ] && cp -a usr/local/share/applications/. /usr/local/share/applications/ || true
+# 构建并安装 ElvaraOSTools
+pacman -S --noconfirm --needed dotnet-sdk
+git clone --depth=1 https://github.com/EveGlowLuna/ElvaraOS-Toolbox.git /tmp/ElvaraOSToolbox
+cd /tmp/ElvaraOSToolbox/ElvaraOSTools
+dotnet publish -c Release -r linux-x64 --self-contained true \
+    -p:PublishSingleFile=true \
+    -p:IncludeNativeLibrariesForSelfExtract=true \
+    -o /tmp/toolbox-out
+install -Dm755 /tmp/toolbox-out/ElvaraOSTools /usr/local/bin/ElvaraOSTools
+cd /tmp
+rm -rf ElvaraOSToolbox toolbox-out
 
 cd /tmp
 rm -rf ElvaraCustom
