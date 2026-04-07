@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-rm dist.iso
+echo "为防止部分虚拟机锁定iso，故使用root权限"
+pkexec rm dist.iso
 
 source ./.venv/bin/activate
 

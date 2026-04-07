@@ -33,7 +33,22 @@ def get_disk_data() -> dict:
         ['lsblk', '-J', '-o', 'NAME,TYPE,SIZE,MOUNTPOINT,FSTYPE,LABEL,MODEL,PARTFLAGS,PARTTYPE,PARTLABEL'],
         capture_output=True, text=True, check=True,
     )
-    return json.loads(result.stdout)
+    data = json.loads(result.stdout)
+    # 对 MODEL 为空的磁盘，尝试从 udev 读取 ID_MODEL
+    for dev in data.get('blockdevices', []):
+        if not dev.get('model'):
+            try:
+                r = subprocess.run(
+                    ['udevadm', 'info', '--query=property', f'--name=/dev/{dev["name"]}'],
+                    capture_output=True, text=True,
+                )
+                for line in r.stdout.splitlines():
+                    if line.startswith('ID_MODEL='):
+                        dev['model'] = line.split('=', 1)[1].replace('_', ' ')
+                        break
+            except Exception:
+                pass
+    return data
 
 
 def get_disk_children(selected_disk_index: int) -> list:

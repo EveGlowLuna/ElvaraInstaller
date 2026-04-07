@@ -49,6 +49,21 @@ dotnet publish -c Release -r linux-x64 --self-contained true \
     -p:IncludeNativeLibrariesForSelfExtract=true \
     -o /tmp/toolbox-out
 install -Dm755 /tmp/toolbox-out/ElvaraOSTools /usr/local/bin/ElvaraOSTools
+
+# 创建 .desktop 文件
+cat > /usr/share/applications/elvara-os-tools.desktop << 'EOF'
+[Desktop Entry]
+Name=ElvaraOS Tools
+Name[zh_CN]=ElvaraOS 工具箱
+Comment=ElvaraOS system toolbox
+Comment[zh_CN]=ElvaraOS 系统工具箱
+Exec=/usr/local/bin/ElvaraOSTools
+Icon=elvara
+Terminal=false
+Type=Application
+Categories=System;Settings;
+StartupNotify=true
+EOF
 cd /tmp
 rm -rf ElvaraOSToolbox toolbox-out
 

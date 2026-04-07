@@ -38,7 +38,7 @@ _ANSI_ESCAPE = _re.compile(rb'\x1b\[[0-9;]*[mGKHF]|\x1b\][^\x07]*\x07|\r')
 
 
 def _run(args: list, **kwargs) -> subprocess.CompletedProcess:
-    """运行子进程，实时把 stdout/stderr 输出到日志"""
+    """运行子进程，实时把 stdout/stderr 输出到日志，支持 \r 进度行"""
     _log(f'$ {" ".join(str(a) for a in args)}')
     process = subprocess.Popen(
         args,
@@ -46,9 +46,30 @@ def _run(args: list, **kwargs) -> subprocess.CompletedProcess:
         stderr=subprocess.STDOUT,
         **kwargs,
     )
-    for raw_line in process.stdout:
-        clean = _ANSI_ESCAPE.sub(b'', raw_line)
-        line = clean.decode('utf-8', errors='replace').rstrip('\n')
+    buf = b''
+    while True:
+        chunk = process.stdout.read(256)
+        if not chunk:
+            break
+        buf += chunk
+        # 按 \n 或 \r 分割，实时输出每一行
+        while True:
+            for sep in (b'\n', b'\r'):
+                idx = buf.find(sep)
+                if idx != -1:
+                    raw_line = buf[:idx]
+                    buf = buf[idx + 1:]
+                    clean = _ANSI_ESCAPE.sub(b'', raw_line)
+                    line = clean.decode('utf-8', errors='replace').strip()
+                    if line:
+                        _log(line)
+                    break
+            else:
+                break
+    # 输出剩余缓冲
+    if buf:
+        clean = _ANSI_ESCAPE.sub(b'', buf)
+        line = clean.decode('utf-8', errors='replace').strip()
         if line:
             _log(line)
     process.wait()

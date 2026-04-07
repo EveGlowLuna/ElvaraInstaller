@@ -60,14 +60,25 @@ export SKIP_DM=false
 export CN_MIRROR=0
 export DEBUG=0
 
-# 先手动装好 yay（chroot 里 archlinuxcn 源已配置）
+# 先手动装好 yay（从 AUR 编译，必须用非 root 用户）
 if ! command -v yay &>/dev/null; then
-    echo "[shorin] 安装 yay..."
-    pacman -S --noconfirm --needed yay || true
+    echo "[shorin] 从 AUR 编译安装 yay..."
+    pacman -S --noconfirm --needed git base-devel go
+    mkdir -p /build/go-cache
+    chmod 777 /build/go-cache
+    cd /tmp
+    git clone https://aur.archlinux.org/yay.git
+    chown -R nobody:nobody yay
+    cd yay
+    sudo -u nobody env GOPROXY=https://goproxy.cn,direct GOCACHE=/build/go-cache GOPATH=/build/go-cache makepkg --noconfirm
+    pacman -U --noconfirm yay-*.pkg.tar.zst
+    cd /tmp
+    rm -rf yay /build
+    echo "[shorin] yay 安装完成"
 fi
 
-# 给用户配置临时 NOPASSWD，让 yay 能以普通用户身份运行
-echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/99_installer_temp
+# 给所有用户配置临时 NOPASSWD，让 yay 和 shorin 脚本能正常运行
+echo "ALL ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/99_installer_temp
 chmod 440 /etc/sudoers.d/99_installer_temp
 
 # 按顺序执行必要模块
@@ -94,6 +105,9 @@ esac
 
 # 清理临时 sudo
 rm -f /etc/sudoers.d/99_installer_temp
+
+# 把 shorin 日志保存到系统里，重启后还能看
+cp /tmp/log-shorin-arch-setup.txt /var/log/shorin-install.log 2>/dev/null || true
 
 echo "[shorin] 全部完成"
 SCRIPT
