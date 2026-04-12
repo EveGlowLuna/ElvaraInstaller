@@ -1,4 +1,5 @@
 """ElvaraOS 安装程序入口"""
+import asyncio
 import os
 import sys
 
@@ -28,8 +29,8 @@ def main() -> None:
         from installer_cli import main as cli_main
         cli_main()
     else:
-        from installer_gui import main as gui_main
-        gui_main()
+        from installer_ws import main as ws_main
+        asyncio.run(ws_main())
 
 
 if __name__ == '__main__':

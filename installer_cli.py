@@ -64,7 +64,7 @@ def main():
         disk_size_gib = size_to_gb(selected_dev['size'])
         user_input = input(
             f"你想分配多大空间给系统？（仅数字，默认单位为 G）[{disk_size_gib:.1f}]G："
-        ).strip()
+        ) + "G"
         part_size = size_to_gb(user_input + 'G' if user_input else f"{disk_size_gib:.3f}G")
         # EFI 占了 513MiB，剩余可用空间略小于整盘
         available_gib = disk_size_gib - 0.5
