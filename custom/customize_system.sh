@@ -54,13 +54,13 @@ cd ../..
 
 # 编译并安装 ElvaraOSTools
 if ! command -v dotnet >/dev/null 2>&1; then
-    pacman -Sy --needed --noconfirm dotnet-sdk || { echo "安装 dotnet-sdk 失败"; exit 1; }
+    pacman -Sy --needed --noconfirm dotnet-sdk || { echo "Install dotnet-sdk failed"; exit 1; }
 fi
 temp_tools_dir=$(mktemp -d)
 cd "$temp_tools_dir"
-git clone --depth 1 https://github.com/EveGlowLuna/ElvaraOS-Toolbox.git || { echo "clone ElvaraOS-Toolbox 失败"; exit 1; }
+git clone --depth 1 https://github.com/EveGlowLuna/ElvaraOS-Toolbox.git || { echo "clone ElvaraOS-Toolbox failed"; exit 1; }
 cd ElvaraOS-Toolbox
-dotnet publish ElvaraOSTools.sln -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o publish || { echo "dotnet publish 失败"; exit 1; }
+dotnet publish ElvaraOSTools.sln -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o publish || { echo "dotnet publish failed"; exit 1; }
 cp publish/ElvaraOSTools /usr/local/bin/ElvaraOSTools
 chmod +x /usr/local/bin/ElvaraOSTools
 cd /
