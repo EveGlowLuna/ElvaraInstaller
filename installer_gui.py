@@ -21,8 +21,12 @@ import sys
 import os
 
 def _load_custom():
-    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    custom_path = os.path.join(os.path.dirname(base) if getattr(sys, 'frozen', False) else base, 'custom', 'custom.py')
+    # 打包后用可执行文件所在目录，未打包用脚本所在目录
+    if getattr(sys, 'frozen', False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    custom_path = os.path.join(base, 'custom', 'custom.py')
     spec = importlib.util.spec_from_file_location('custom.custom', custom_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -159,6 +163,11 @@ class InstallWorker(QObject):
     def run(self) -> None:
         import shutil
         setup_gui_logging(self.log.emit)
+        # 清空旧日志
+        try:
+            open('/tmp/elvara_install.log', 'w').close()
+        except Exception:
+            pass
         try:
             kw = self._kwargs
             disk_root   = kw['disk_root']
@@ -169,25 +178,68 @@ class InstallWorker(QObject):
             timezone    = kw['timezone']
             kb_layout   = kw['kb_layout']
             wipe        = kw['wipe']
+            new_parts   = kw.get('new_parts', False)
 
             # 步骤 0：分区
             self.step.emit(0, INSTALL_STEPS[0][0])
+            # 先尝试 umount，忽略失败（磁盘可能没挂载）
+            import subprocess as _sp
+            r = _sp.run(['sudo', 'umount', '-R', '/mnt'], capture_output=True)
+            if r.returncode != 0:
+                _sp.run(['sudo', 'umount', '-Rl', '/mnt'], capture_output=True)
             if wipe:
-                disk.create_label(disk_root)
-                disk.create_part(
-                    target_disk=disk_root, part_label='primary',
-                    start_size='1MiB', end_size='513MiB',
-                    fs_type='fat32', is_efi=True,
-                )
-                disk.create_part(
-                    disk_root, 'primary', '513MiB',
-                    f'{kw["part_size_gb"]}GiB', is_efi=False,
-                )
-                disk_efi  = disk.get_partition_path(disk_root, 1)
+                # 清盘重建：create_label + EFI + root
+                raw_disk = kw['raw_disk']
+                part_size_gib = kw.get('part_size_gib')
+                end_size = '100%' if part_size_gib is None else f'{part_size_gib}GiB'
+                disk.create_label(raw_disk)
+                disk.create_part(raw_disk, 'primary', '1MiB', '513MiB', fs_type='fat32', is_efi=True)
+                disk.create_part(raw_disk, 'primary', '513MiB', end_size, is_efi=False)
+                base_system.udevadm_settle()
+                disk_efi  = disk.get_partition_path(raw_disk, 1)
                 disk.create_filesystem(disk_efi, 'fat')
-                disk_root = disk.get_partition_path(disk_root, 2)
+                disk_root = disk.get_partition_path(raw_disk, 2)
+                disk.create_filesystem(disk_root, 'ext4')
+            elif new_parts:
+                # 在未分配空间追加分区：不清盘，直接 mkpart
+                raw_disk = kw['raw_disk']
+                part_size_gib = kw.get('part_size_gib')
+                # 获取当前最后一个分区的结束位置
+                last_end = disk.get_last_part_end(raw_disk)
+                efi_end  = f'{int(last_end.rstrip("MiB")) + 513}MiB' if last_end.endswith('MiB') else '513MiB'
+                # 获取新分区编号
+                children_data = disk.get_disk_data()
+                raw_name  = raw_disk.replace('/dev/', '')
+                dev_info  = next((d for d in children_data['blockdevices'] if d['name'] == raw_name), None)
+                existing  = dev_info.get('children', []) if dev_info else []
+                efi_num   = len(existing) + 1
+                root_num  = efi_num + 1
+                end_size  = '100%' if part_size_gib is None else f'{part_size_gib}GiB'
+                disk.create_part(raw_disk, 'primary', last_end, efi_end, fs_type='fat32', is_efi=False)
+                disk.create_part(raw_disk, 'primary', efi_end, end_size, is_efi=False)
+                # 手动设 esp flag
+                import subprocess as _sp
+                _sp.run(['sudo', 'parted', '-s', raw_disk, 'set', str(efi_num), 'esp', 'on'], check=True)
+                base_system.udevadm_settle()
+                disk_efi  = disk.get_partition_path(raw_disk, efi_num)
+                disk_root = disk.get_partition_path(raw_disk, root_num)
+                disk.create_filesystem(disk_efi, 'fat')
+                disk.create_filesystem(disk_root, 'ext4')
+            elif disk_efi is not None:
+                # 已有EFI分区，只格式化root
                 disk.create_filesystem(disk_root, 'ext4')
             else:
+                # 选了已有分区但磁盘没有EFI，清盘重建
+                raw_disk = kw['raw_disk']
+                part_size_gib = kw.get('part_size_gib')
+                end_size = '100%' if part_size_gib is None else f'{part_size_gib}GiB'
+                disk.create_label(raw_disk)
+                disk.create_part(raw_disk, 'primary', '1MiB', '513MiB', fs_type='fat32', is_efi=True)
+                disk.create_part(raw_disk, 'primary', '513MiB', end_size, is_efi=False)
+                base_system.udevadm_settle()
+                disk_efi  = disk.get_partition_path(raw_disk, 1)
+                disk.create_filesystem(disk_efi, 'fat')
+                disk_root = disk.get_partition_path(raw_disk, 2)
                 disk.create_filesystem(disk_root, 'ext4')
 
             # 挂载
@@ -201,51 +253,70 @@ class InstallWorker(QObject):
 
             # 步骤 3：配置系统
             self.step.emit(3, INSTALL_STEPS[3][0])
-            base_system.arch_chroot('/mnt', ['echo', '"zh_CN.UTF-8 UTF-8"'], '/etc/locale.gen')
+            base_system.write_file('/mnt', '/etc/locale.gen', 'zh_CN.UTF-8 UTF-8\n', 'a')
             base_system.arch_chroot('/mnt', ['locale-gen'])
-            base_system.arch_chroot('/mnt', ['echo', 'LANG=zh_CN.UTF-8'], '/etc/locale.conf', 'a')
-            base_system.arch_chroot('/mnt', ['ln', '-sf',
-                f'/usr/share/zoneinfo/{timezone}', '/etc/localtime'])
-            base_system.arch_chroot('/mnt', ['timedatectl', 'set-local-rtc', '1'])
-            base_system.arch_chroot('/mnt', ['echo', hostname if hostname != '' else 'elvara'],
-                '/etc/hostname', 'w')
-            temp_cmd = f"""
-cat > /etc/hosts << EOF
-127.0.0.1   localhost
-::1         localhost
-127.0.1.1   {hostname}.localdomain   {hostname}
-EOF
-"""
-            base_system.arch_chroot('/mnt', ['bash', '-c', temp_cmd])
-            base_system.arch_chroot('/mnt', ['bash', '-c', f'echo "KEYMAP={kb_layout}" > /etc/vconsole.conf'])
+            base_system.write_file('/mnt', '/etc/locale.conf', 'LANG=zh_CN.UTF-8\n')
+            base_system.arch_chroot('/mnt', ['ln', '-sf', f'/usr/share/zoneinfo/{timezone}', '/etc/localtime'])
+            base_system.write_file('/mnt', '/etc/hostname', f'{hostname}\n')
+            base_system.write_file('/mnt', '/etc/hosts',
+                f'127.0.0.1   localhost\n::1         localhost\n127.0.1.1   {hostname}.localdomain   {hostname}\n')
+            base_system.write_file('/mnt', '/etc/vconsole.conf', f'KEYMAP={kb_layout}\n')
+            # 创建用户
+            base_system.create_user('/mnt', username)
             base_system.set_passwd('/mnt', username, userpwd)
-            base_system.arch_chroot('/mnt', ['bash', '-c',
-                'echo "%wheel ALL=(ALL:ALL) ALL" > /etc/sudoers.d/wheel'])
+            base_system.set_passwd('/mnt', 'root', userpwd)
+            base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
             base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
-            base_system.arch_chroot('/mnt', ['systemctl', 'start', 'NetworkManager'])
 
-            # 步骤 4：定制脚本
+            # 所有配置写完后重建 initramfs
+            base_system.arch_chroot('/mnt', ['mkinitcpio', '-P'])
+
+            # 步骤 4：定制脚本（由 custom.py 内部处理）
             self.step.emit(4, INSTALL_STEPS[4][0])
-            shutil.copy('custom/customize_system.sh', '/mnt/root/')
-            base_system.arch_chroot('/mnt', ['bash', '/root/customize_system.sh'])
-            _load_custom().run('/mnt')
 
-            # 步骤 5：引导
+            # 步骤 5：引导（先装 grub，再跑 custom，grub 是核心不能被 custom 失败影响）
             self.step.emit(5, INSTALL_STEPS[5][0])
             boot_mode = efi.get_boot_mode()
-            target = '--target=x86_64-efi' if boot_mode == 'uefi' else '--target=i386-efi'
-            base_system.arch_chroot('/mnt', [
-                'grub-install', target,
-                '--efi-directory=/boot', '--bootloader-id=GRUB',
-            ])
+            if boot_mode == 'uefi' and disk_efi is not None:
+                target = '--target=x86_64-efi'
+                base_system.arch_chroot('/mnt', [
+                    'grub-install', target,
+                    '--efi-directory=/boot', '--bootloader-id=GRUB',
+                ])
+            elif boot_mode == 'uefi32' and disk_efi is not None:
+                target = '--target=i386-efi'
+                base_system.arch_chroot('/mnt', [
+                    'grub-install', target,
+                    '--efi-directory=/boot', '--bootloader-id=GRUB',
+                ])
+            else:
+                base_system.arch_chroot('/mnt', [
+                    'grub-install', '--target=i386-pc', kw['raw_disk'],
+                ])
             base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
 
+            _load_custom().run('/mnt')
+
+            base_system.umount_all()
             self.step.emit(6, INSTALL_STEPS[6][0])
             self.finished.emit(True, '')
 
         except Exception as e:
             import traceback
-            self.log.emit(traceback.format_exc())
+            tb = traceback.format_exc()
+            # 如果是子进程错误，附上 stdout/stderr
+            if hasattr(e, 'stderr') and e.stderr:
+                stderr_text = e.stderr if isinstance(e.stderr, str) else e.stderr.decode(errors='replace')
+                tb += f'\n--- stderr ---\n{stderr_text}'
+            if hasattr(e, 'stdout') and e.stdout:
+                stdout_text = e.stdout if isinstance(e.stdout, str) else e.stdout.decode(errors='replace')
+                tb += f'\n--- stdout ---\n{stdout_text}'
+            self.log.emit(tb)
+            try:
+                with open('/tmp/elvara_install.log', 'a') as f:
+                    f.write(tb)
+            except Exception:
+                pass
             self.finished.emit(False, str(e))
 
 
@@ -317,8 +388,7 @@ class DiskPage(QWidget):
     def __init__(self, on_prev, on_next):
         super().__init__()
         self._on_next = on_next
-        self._disk_data = disk.get_disk_data()
-        self._devices = self._disk_data['blockdevices']
+        self._devices = []
 
         root = QVBoxLayout(self)
         root.setContentsMargins(60, 40, 60, 40)
@@ -335,15 +405,6 @@ class DiskPage(QWidget):
 
         self._list = QListWidget()
         self._list.setMinimumHeight(160)
-        for dev in self._devices:
-            model = dev.get('model') or 'Unknown'
-            size  = dev.get('size', '')
-            path  = f'/dev/{dev["name"]}'
-            item  = QListWidgetItem(f'  {model}\n  {size}  ·  {path}')
-            item.setSizeHint(QSize(0, 56))
-            self._list.addItem(item)
-        if self._list.count():
-            self._list.setCurrentRow(0)
         self._list.currentRowChanged.connect(self._on_disk_changed)
         root.addWidget(self._list)
 
@@ -352,7 +413,7 @@ class DiskPage(QWidget):
         self._part_label.setVisible(False)
         root.addWidget(self._part_label)
         self._part_list = QListWidget()
-        self._part_list.setMaximumHeight(120)
+        self._part_list.setMaximumHeight(140)
         self._part_list.setVisible(False)
         root.addWidget(self._part_list)
 
@@ -372,17 +433,55 @@ class DiskPage(QWidget):
 
         self._on_disk_changed(0)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        """每次页面显示时重新读取磁盘数据"""
+        prev_row = self._list.currentRow()
+        self._list.blockSignals(True)
+        self._list.clear()
+        try:
+            self._devices = disk.get_disk_data()['blockdevices']
+        except Exception:
+            self._devices = []
+        for dev in self._devices:
+            model = dev.get('model') or 'Unknown'
+            size  = dev.get('size', '')
+            path  = f'/dev/{dev["name"]}'
+            item  = QListWidgetItem(f'  {model}\n  {size}  ·  {path}')
+            item.setSizeHint(QSize(0, 56))
+            self._list.addItem(item)
+        self._list.blockSignals(False)
+        row = prev_row if 0 <= prev_row < self._list.count() else 0
+        if self._list.count():
+            self._list.setCurrentRow(row)
+        self._on_disk_changed(row)
+
     def _on_disk_changed(self, row: int) -> None:
         if row < 0 or row >= len(self._devices):
             return
-        children = self._devices[row].get('children', [])
+        dev = self._devices[row]
+        children = dev.get('children', [])
+        self._part_list.clear()
         if children:
-            self._part_list.clear()
             for c in children:
                 self._part_list.addItem(
-                    f'/dev/{c["name"]}  ({c.get("fstype") or "未知"})  {c.get("size", "")}')
-            if self._part_list.count():
-                self._part_list.setCurrentRow(0)
+                    f'  /dev/{c["name"]}  ({c.get("fstype") or "未知"})  {c.get("size", "")}')
+            # 用磁盘总量减去各分区大小算未分配空间，lsblk 数据直接用，不调外部命令
+            try:
+                total = _parse_size_gib(dev.get('size', '0G'))
+                used  = sum(_parse_size_gib(c.get('size', '0G')) for c in children)
+                unalloc = max(0.0, total - used)
+            except Exception:
+                unalloc = 0.0
+            if unalloc >= 0.5:
+                self._part_list.addItem(f'  ＋ 在未分配空间新建分区 / 清空磁盘重装  （未分配 {unalloc:.1f} GiB）')
+            else:
+                self._part_list.addItem('  ＋ 清空磁盘重装')
+            self._part_list.setCurrentRow(0)
+            self._part_label.setText('选择安装到哪个分区：')
             self._part_label.setVisible(True)
             self._part_list.setVisible(True)
         else:
@@ -399,24 +498,115 @@ class DiskPage(QWidget):
         children = dev.get('children', [])
 
         if children:
-            # 有分区，让用户选择目标分区
             prow = self._part_list.currentRow()
             if prow < 0:
                 QMessageBox.warning(self, '提示', '请选择一个目标分区')
                 return
-            disk_root = f'/dev/{children[prow]["name"]}'
-            disk_efi_part = efi.get_efi_part(row)
-            self._on_next(raw_disk, disk_root, disk_efi_part, wipe=False)
+            if prow == len(children):
+                # 最后一项：让用户选择是在未分配空间建分区还是清盘
+                reply = QMessageBox.question(
+                    self, '选择安装方式',
+                    f'请选择安装方式：\n\n'
+                    f'• 是：在未分配空间新建分区安装（保留现有数据）\n'
+                    f'• 否：清空 {raw_disk} 全部数据重新分区安装',
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self._on_next(raw_disk, None, None, wipe=False, new_parts=True)
+                elif reply == QMessageBox.StandardButton.No:
+                    self._on_next(raw_disk, None, None, wipe=True, new_parts=False)
+            else:
+                disk_root = f'/dev/{children[prow]["name"]}'
+                disk_efi_part = efi.get_efi_part(row)
+                self._on_next(raw_disk, disk_root, disk_efi_part, wipe=False, new_parts=False)
         else:
-            # 空盘，清空安装
             reply = QMessageBox.question(
                 self, '确认',
                 f'将清空 {raw_disk} 上的所有数据并安装系统，确认继续？',
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.Yes:
-                self._on_next(raw_disk, None, None, wipe=True)
+                self._on_next(raw_disk, None, None, wipe=True, new_parts=False)
 
+
+
+class PartSizePage(QWidget):
+    """仅在 wipe=True 时显示，询问分配给系统的空间大小"""
+    def __init__(self, on_prev, on_next):
+        super().__init__()
+        self._on_next = on_next
+        self._disk_size_gib = 0.0
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(60, 40, 60, 40)
+        root.setSpacing(12)
+
+        title = QLabel('分配磁盘空间')
+        title.setObjectName('title')
+        root.addWidget(title)
+
+        self._hint = QLabel()
+        self._hint.setObjectName('subtitle')
+        self._hint.setWordWrap(True)
+        root.addWidget(self._hint)
+        root.addSpacing(8)
+
+        form = QFormLayout()
+        form.setSpacing(14)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._size_edit = QLineEdit()
+        self._size_edit.setPlaceholderText('留空则使用全部可用空间')
+        form.addRow('分配大小（G）：', self._size_edit)
+        root.addLayout(form)
+
+        root.addStretch()
+        root.addWidget(_divider())
+        root.addSpacing(8)
+
+        btn_row = QHBoxLayout()
+        prev_btn = _nav_btn('← 上一步', primary=False)
+        prev_btn.clicked.connect(on_prev)
+        next_btn = _nav_btn('下一步 →')
+        next_btn.clicked.connect(self._handle_next)
+        btn_row.addWidget(prev_btn)
+        btn_row.addStretch()
+        btn_row.addWidget(next_btn)
+        root.addLayout(btn_row)
+
+    def set_disk_size(self, size_str: str) -> None:
+        gib = _size_to_gb(size_str)
+        self._disk_size_gib = gib
+        self._hint.setText(
+            f'磁盘总容量约 {gib:.1f} GiB。\n'
+            '输入要分配给系统的空间大小（单位 G），留空则使用全部可用空间。'
+        )
+        self._size_edit.setPlaceholderText(f'留空则使用全部可用空间（约 {gib:.1f} G）')
+
+    def _handle_next(self) -> None:
+        text = self._size_edit.text().strip()
+        if not text:
+            self._on_next(None)  # None = 100%
+            return
+        try:
+            val = float(text)
+            if val <= 0:
+                raise ValueError
+        except ValueError:
+            QMessageBox.warning(self, '提示', '请输入有效的数字')
+            return
+        # 换算：用户输入 GB，转 GiB，超出可用则用 100%
+        gib = val * 1000 / 1024
+        available = self._disk_size_gib - 0.5  # 减去 EFI 的 513MiB
+        self._on_next(None if gib >= available else gib)
+
+    def get_part_size_gib(self) -> float | None:
+        """返回 None 表示用 100%"""
+        text = self._size_edit.text().strip()
+        if not text:
+            return None
+        val = float(text) * 1000 / 1024
+        available = self._disk_size_gib - 0.5
+        return None if val >= available else val
 
 
 class SystemPage(QWidget):
@@ -653,6 +843,14 @@ class InstallPage(QWidget):
         self._step_label.setObjectName('step_hint')
         self._step_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         pw_layout.addWidget(self._step_label)
+
+        self._last_log_label = QLabel('')
+        self._last_log_label.setObjectName('step_hint')
+        self._last_log_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self._last_log_label.setWordWrap(True)
+        self._last_log_label.setStyleSheet('font-size: 11px; color: #aaaaaa;')
+        pw_layout.addWidget(self._last_log_label)
+
         pw_layout.addStretch()
 
         # 日志视图
@@ -693,6 +891,12 @@ class InstallPage(QWidget):
         self._log_view.verticalScrollBar().setValue(
             self._log_view.verticalScrollBar().maximum()
         )
+        # 更新最新日志提示，过滤空行和命令行（$ 开头）
+        stripped = msg.strip()
+        if stripped and not stripped.startswith('$'):
+            # 截断过长的行
+            display = stripped if len(stripped) <= 80 else stripped[:77] + '...'
+            self._last_log_label.setText(display)
 
     def _toggle_log(self) -> None:
         self._show_log = not self._show_log
@@ -771,15 +975,16 @@ class InstallerWindow(QMainWindow):
         self._stack = QStackedWidget()
         self.setCentralWidget(self._stack)
 
-        self._welcome = WelcomePage(self._go_disk, self._quit)
-        self._disk_pg = DiskPage(self._go_welcome, self._from_disk)
-        self._sys_pg  = SystemPage(self._go_disk_direct, self._go_user)
-        self._user_pg = UserPage(self._go_sys, self._go_confirm)
-        self._confirm = ConfirmPage(self._go_user, self._start_install)
-        self._install = InstallPage()
-        self._done    = DonePage(self._quit, self._reboot)
+        self._welcome  = WelcomePage(self._go_disk, self._quit)
+        self._disk_pg  = DiskPage(self._go_welcome, self._from_disk)
+        self._part_pg  = PartSizePage(self._go_disk_direct, self._from_part_size)
+        self._sys_pg   = SystemPage(self._go_part_or_disk, self._go_user)
+        self._user_pg  = UserPage(self._go_sys, self._go_confirm)
+        self._confirm  = ConfirmPage(self._go_user, self._start_install)
+        self._install  = InstallPage()
+        self._done     = DonePage(self._quit, self._reboot)
 
-        for page in [self._welcome, self._disk_pg, self._sys_pg,
+        for page in [self._welcome, self._disk_pg, self._part_pg, self._sys_pg,
                      self._user_pg, self._confirm, self._install, self._done]:
             self._stack.addWidget(page)
 
@@ -794,16 +999,42 @@ class InstallerWindow(QMainWindow):
     def _go_disk(self):
         self._stack.setCurrentWidget(self._disk_pg)
 
-    def _from_disk(self, raw_disk: str, disk_root, disk_efi, wipe: bool):
-        self._selected['raw_disk']  = raw_disk
-        self._selected['disk_root'] = disk_root
-        self._selected['disk_efi']  = disk_efi
-        self._selected['wipe']      = wipe
+    def _go_part_or_disk(self):
+        """SystemPage 的上一步：需要选大小时回到 PartSizePage，否则回到 DiskPage"""
+        if self._selected.get('wipe') or self._selected.get('new_parts'):
+            self._stack.setCurrentWidget(self._part_pg)
+        else:
+            self._stack.setCurrentWidget(self._disk_pg)
+
+    def _from_disk(self, raw_disk: str, disk_root, disk_efi, wipe: bool, new_parts: bool = False):
+        self._selected['raw_disk']   = raw_disk
+        self._selected['disk_root']  = disk_root
+        self._selected['disk_efi']   = disk_efi
+        self._selected['wipe']       = wipe
+        self._selected['new_parts']  = new_parts
+        if wipe or new_parts:
+            # 需要询问分区大小
+            disk_data = disk.get_disk_data()
+            raw_name  = raw_disk.replace('/dev/', '')
+            dev_info  = next((d for d in disk_data['blockdevices'] if d['name'] == raw_name), None)
+            if dev_info:
+                self._part_pg.set_disk_size(dev_info['size'])
+            self._stack.setCurrentWidget(self._part_pg)
+        else:
+            self._stack.setCurrentWidget(self._sys_pg)
+
+    def _from_part_size(self, part_size_gib) -> None:
+        self._selected['part_size_gib'] = part_size_gib  # None = 100%
         self._stack.setCurrentWidget(self._sys_pg)
 
     def _go_confirm(self):
         s = self._selected
-        mode = '清空全盘' if s['wipe'] else f'安装到 {s["disk_root"]}'
+        if s['wipe']:
+            mode = '清空全盘重新分区'
+        elif s.get('new_parts'):
+            mode = '在未分配空间新建分区'
+        else:
+            mode = f'安装到 {s["disk_root"]}'
         disk_info = f'{s["raw_disk"]}  —  {mode}'
         sys_cfg  = self._sys_pg.get_config()
         username = self._user_pg.get_user()['username']
@@ -815,32 +1046,21 @@ class InstallerWindow(QMainWindow):
         sys_cfg = self._sys_pg.get_config()
         user    = self._user_pg.get_user()
 
-        # 全盘安装时需要知道分配大小
-        part_size_gb = None
-        if s['wipe']:
-            disk_data = disk.get_disk_data()
-            raw_name  = s['raw_disk'].replace('/dev/', '')
-            dev_info  = next((d for d in disk_data['blockdevices'] if d['name'] == raw_name), None)
-            if dev_info:
-                size_str = dev_info['size']
-                try:
-                    part_size_gb = _size_to_gb(size_str)
-                except Exception:
-                    part_size_gb = 20.0
-            else:
-                part_size_gb = 20.0
+        # part_size_gib: None 表示用 100%，wipe=False 且有 EFI 时不需要
+        part_size_gib = self._selected.get('part_size_gib')  # None = 100%
 
         kwargs = dict(
-            raw_disk     = s['raw_disk'],
-            disk_root    = s['disk_root'],
-            disk_efi     = s['disk_efi'],
-            wipe         = s['wipe'],
-            part_size_gb = part_size_gb,
-            username     = user['username'],
-            userpwd      = user['password'],
-            hostname     = sys_cfg['hostname'],
-            timezone     = sys_cfg['timezone'],
-            kb_layout    = sys_cfg['kb_layout'],
+            raw_disk      = s['raw_disk'],
+            disk_root     = s['disk_root'],
+            disk_efi      = s['disk_efi'],
+            wipe          = s['wipe'],
+            new_parts     = s.get('new_parts', False),
+            part_size_gib = part_size_gib,
+            username      = user['username'],
+            userpwd       = user['password'],
+            hostname      = sys_cfg['hostname'],
+            timezone      = sys_cfg['timezone'],
+            kb_layout     = sys_cfg['kb_layout'],
         )
 
         self._install.set_destination(s['raw_disk'])
@@ -879,6 +1099,7 @@ class InstallerWindow(QMainWindow):
             QMessageBox.critical(
                 self, '安装失败',
                 f'{message}\n\n'
+                '详细日志已保存至 /tmp/elvara_install.log\n\n'
                 '请尝试重新启动到 LiveCD。\n'
                 '如果你发现仍存在这个问题，请前往官网反馈：\n'
                 'https://github.com/EveGlowLuna/ElvaraOS',
@@ -897,6 +1118,23 @@ def _size_to_gb(size_str: str) -> float:
     elif size_str.endswith('T'):
         return float(size_str[:-1]) * 1024
     raise ValueError(f'无法识别的磁盘大小单位: {size_str}')
+
+
+def _parse_size_gib(size_str: str) -> float:
+    """把 lsblk 的大小字符串（如 '512M', '31.5G', '1T'）转成 GiB"""
+    size_str = size_str.strip()
+    try:
+        if size_str.endswith('T'):
+            return float(size_str[:-1]) * 1000 * 1000 / 1024 / 1024
+        elif size_str.endswith('G'):
+            return float(size_str[:-1]) * 1000 / 1024
+        elif size_str.endswith('M'):
+            return float(size_str[:-1]) / 1024
+        elif size_str.endswith('K'):
+            return float(size_str[:-1]) / 1024 / 1024
+    except ValueError:
+        pass
+    return 0.0
 
 
 

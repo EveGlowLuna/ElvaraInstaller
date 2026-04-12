@@ -25,7 +25,7 @@ def main() -> None:
     _reexec_as_root()
 
     if '--cli' in sys.argv:
-        from installer import main as cli_main
+        from installer_cli import main as cli_main
         cli_main()
     else:
         from installer_gui import main as gui_main
