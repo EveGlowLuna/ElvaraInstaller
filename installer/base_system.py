@@ -1,5 +1,6 @@
 import subprocess
 import os
+import sys
 
 # packages.txt 和可执行文件同级的 custom/ 目录里
 # 打包后用 sys.executable 定位，未打包用本文件的上级目录
@@ -175,3 +176,38 @@ def set_passwd(mount_point: str, user: str, password: str) -> None:
     _log(f'$ chpasswd [{user}]')
     args = ['sudo', 'arch-chroot', mount_point, 'chpasswd']
     subprocess.run(args, input=f'{user}:{password}\n', text=True, check=True)
+
+
+def is_linux_tty_or_non_desktop() -> bool:
+    """判断是否处于 Linux 的非图形终端环境（TTY / SSH 等）。"""
+    if not sys.platform.startswith("linux"):
+        return False
+
+    # 1. 标准输入必须是一个终端（交互式）
+    if not sys.stdin.isatty():
+        return False
+
+    # 2. 如果存在图形会话变量，说明在桌面环境内
+    if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+        return False
+
+    # 3. 进一步验证终端类型
+    try:
+        tty_name = os.ttyname(sys.stdin.fileno())
+    except OSError:
+        # 极少情况，取不到 tty 名，保守返回 True（因为前面已通过 isatty 且无图形变量）
+        return True
+
+    # 虚拟控制台 /dev/tty1-63 或串行控制台 /dev/ttyS*、/dev/ttyUSB* 等均视为真 TTY
+    if tty_name.startswith("/dev/tty"):
+        return True
+
+    # 伪终端 /dev/pts/*：通常是 SSH 或图形终端模拟器。
+    # 由于前面已经排除了 DISPLAY/WAYLAND_DISPLAY，此时 pts 多半是 SSH 会话。
+    if tty_name.startswith("/dev/pts/"):
+        return True
+
+    # 其他未知类型保守返回 True
+    return True
+
+
