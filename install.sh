@@ -38,7 +38,7 @@ fi
 
 cd repo
 echo -e "${GREEN}Starting installer...${NC}"
-python3 installer_cli.py --tty
+python3 main.py
 
 # 5. 清理
 cd /
