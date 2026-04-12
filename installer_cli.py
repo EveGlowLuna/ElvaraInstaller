@@ -272,6 +272,7 @@ def main_tty():
     disk.mount_disk(disk_root, disk_efi)
 
     print_step('Installing base system (this may take a while)...')
+    base_system.update_mirrorlist()
     base_system.install_base('/mnt')
     base_system.generate_fstab('/mnt')
 

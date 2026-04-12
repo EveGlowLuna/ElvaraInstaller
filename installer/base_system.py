@@ -16,6 +16,8 @@ _log_callback = None
 _log_file_path = '/tmp/elvara_install.log'
 
 
+
+
 def set_log_callback(cb):
     global _log_callback
     _log_callback = cb
@@ -78,6 +80,12 @@ def _run(args: list, **kwargs) -> subprocess.CompletedProcess:
         raise subprocess.CalledProcessError(process.returncode, args)
     return process
 
+
+def update_mirrorlist(is_chroot: bool = False, chroot_path = None):
+    if is_chroot:
+        arch_chroot(chroot_path, ['reflector', '-a', '12', '-c', 'cn', '-f', '10', '--sort', 'rate', '--verbose', '--save', '/etc/pacman.d/mirrorlist'])
+    else:
+        _run(['reflector', '-a', '12', '-c', 'cn', '-f', '10', '--sort', 'rate', '--verbose', '--save', '/etc/pacman.d/mirrorlist'])
 
 def udevadm_settle() -> None:
     """等待内核刷新分区表"""
