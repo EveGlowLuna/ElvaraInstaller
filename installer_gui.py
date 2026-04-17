@@ -333,6 +333,31 @@ def _divider() -> QFrame:
     return f
 
 
+def _parse_size_gib(size_str: str) -> float:
+    """Converts lsblk size string to GiB."""
+    if not size_str or not isinstance(size_str, str):
+        return 0.0
+    s = size_str.strip().upper().replace(',', '.')
+    try:
+        # Handle cases where size might not have a unit (e.g., just bytes)
+        if s[-1].isdigit():
+            return float(s) / (1024 * 1024 * 1024)
+        
+        num = float(s[:-1])
+        unit = s[-1]
+        if unit == 'T':
+            return num * 1024
+        if unit == 'G':
+            return num
+        if unit == 'M':
+            return num / 1024
+        if unit == 'K':
+            return num / (1024 * 1024)
+        return float(s) / (1024 * 1024 * 1024) # Bytes
+    except (ValueError, TypeError, IndexError):
+        return 0.0
+
+
 class WelcomePage(QWidget):
     def __init__(self, on_next, on_quit):
         super().__init__()
@@ -389,6 +414,7 @@ class DiskPage(QWidget):
         super().__init__()
         self._on_next = on_next
         self._devices = []
+        self._unalloc_gib = 0.0
 
         root = QVBoxLayout(self)
         root.setContentsMargins(60, 40, 60, 40)
@@ -503,18 +529,29 @@ class DiskPage(QWidget):
                 QMessageBox.warning(self, '提示', '请选择一个目标分区')
                 return
             if prow == len(children):
-                # 最后一项：让用户选择是在未分配空间建分区还是清盘
-                reply = QMessageBox.question(
-                    self, '选择安装方式',
-                    f'请选择安装方式：\n\n'
-                    f'• 是：在未分配空间新建分区安装（保留现有数据）\n'
-                    f'• 否：清空 {raw_disk} 全部数据重新分区安装',
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
-                )
-                if reply == QMessageBox.StandardButton.Yes:
-                    self._on_next(raw_disk, None, None, wipe=False, new_parts=True)
-                elif reply == QMessageBox.StandardButton.No:
-                    self._on_next(raw_disk, None, None, wipe=True, new_parts=False)
+                # 最后一项：新建分区或清盘
+                if self._unalloc_gib >= 0.5:
+                    # 有未分配空间，让用户二选一
+                    reply = QMessageBox.question(
+                        self, '选择安装方式',
+                        f'请选择安装方式：\n\n'
+                        f'• 是：在未分配空间新建分区安装（保留现有数据）\n'
+                        f'• 否：清空 {raw_disk} 全部数据重新分区安装',
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
+                        self._on_next(raw_disk, None, None, wipe=False, new_parts=True)
+                    elif reply == QMessageBox.StandardButton.No:
+                        self._on_next(raw_disk, None, None, wipe=True, new_parts=False)
+                else:
+                    # 没有未分配空间，只能清盘
+                    reply = QMessageBox.question(
+                        self, '确认操作',
+                        f'此操作将清空 {raw_disk} 上的全部数据并重新分区安装系统，是否继续？',
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
+                        self._on_next(raw_disk, None, None, wipe=True, new_parts=False)
             else:
                 disk_root = f'/dev/{children[prow]["name"]}'
                 disk_efi_part = efi.get_efi_part(row)

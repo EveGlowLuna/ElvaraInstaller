@@ -192,72 +192,108 @@ def main_tty():
     raw_disk = f'/dev/{selected_dev["name"]}'
     disk_efi = efi.get_efi_part(disk_select_index)
     children = selected_dev.get('children', [])
+    disk_root = None
+    wipe_disk = False
+    new_parts = False
 
     if children:
         print_info('Disk contains multiple partitions:')
         for i, child in enumerate(children):
             fstype = child.get('fstype', 'unknown')
             print(f"    {i + 1}: /dev/{child['name']} (type: {fstype}): {child['size']}")
+
+        total_size = size_to_gb(selected_dev.get('size', '0G'))
+        used_size = sum(size_to_gb(c.get('size', '0G')) for c in children)
+        unalloc_gib = max(0.0, total_size - used_size)
+
+        options_start_index = len(children) + 1
+        options = []
+        if unalloc_gib >= 0.5:
+            options.append(f"Create new partition in unallocated space ({unalloc_gib:.1f} GiB available)")
+        options.append("Wipe entire disk and reinstall")
+
+        for i, option in enumerate(options):
+            print(f"    {options_start_index + i}: {option}")
+
         while True:
             try:
-                choice = input_prompt('Select partition to install root (number)')
-                part_index = int(choice) - 1
-                if part_index < 0 or part_index >= len(children):
-                    print_error('Invalid partition number.')
-                    continue
-                disk_root = f'/dev/{children[part_index]["name"]}'
-                break
+                choice_str = input_prompt('Select root partition or an action (number)')
+                choice = int(choice_str)
+                if 1 <= choice <= len(children):
+                    disk_root = f'/dev/{children[choice - 1]["name"]}'
+                    break
+                elif len(children) < choice <= len(children) + len(options):
+                    option_index = choice - len(children) - 1
+                    selected_option = options[option_index]
+                    if "Create new partition" in selected_option:
+                        new_parts = True
+                        disk_root = None
+                    elif "Wipe entire disk" in selected_option:
+                        wipe_disk = True
+                        disk_root = None
+                    break
+                else:
+                    print_error('Invalid option, please try again.')
             except ValueError:
                 print_error('Please enter a valid number.')
     else:
-        disk_root = raw_disk
+        # 没有子分区，直接走全盘安装流程
+        wipe_disk = True
+        disk_root = None
 
-    if disk_efi is not None:
-        print_step('EFI partition already exists. Formatting root partition only.')
-        disk.create_filesystem(disk_root, 'ext4')
-    else:
-        print_step('No EFI partition found. Will create new partition table.')
-        # 计算磁盘大小，带异常处理
-        while True:
-            try:
-                disk_size_gib = size_to_gb(selected_dev['size'])
-                break
-            except ValueError as e:
-                print_error(f'Failed to parse disk size: {e}')
-                print_error('Aborting installation due to unrecognized disk size format.')
-                return
-
-        prompt = f'How much space for the system? (in GiB, default: {disk_size_gib:.1f})'
-        while True:
-            user_input = input_prompt(prompt).strip()
-            if not user_input:
-                part_size = disk_size_gib
-                break
-            try:
-                part_size = size_to_gb(user_input + 'G')
-                break
-            except ValueError:
-                print_error('Invalid size format. Please enter a number (e.g., 20 for 20G).')
-                continue
-
-        # EFI 占用约 513MiB = 0.5 GiB
-        available_gib = disk_size_gib - 0.5
-        end_size = '100%' if part_size >= available_gib else f'{part_size}GiB'
-
-        print_step('Creating partition table...')
+    # ========================================================================
+    # ========================= Installation Logic ===========================
+    # ========================================================================
+    
+    # Prepare partitions
+    if wipe_disk:
+        print_step('Wiping disk and creating new partitions...')
+        disk_size_gib = size_to_gb(selected_dev['size'])
+        end_size = '100%'
         disk.create_label(raw_disk)
-        disk.create_part(target_disk=raw_disk, part_label='primary',
-                         start_size='1MiB', end_size='513MiB', fs_type='fat32', is_efi=True)
+        disk.create_part(target_disk=raw_disk, part_label='primary', start_size='1MiB', end_size='513MiB', fs_type='fat32', is_efi=True)
         disk.create_part(raw_disk, 'primary', '513MiB', end_size, is_efi=False)
         base_system.udevadm_settle()
-
         disk_efi  = disk.get_partition_path(raw_disk, 1)
         disk_root = disk.get_partition_path(raw_disk, 2)
-
-        print_step('Formatting EFI partition...')
         disk.create_filesystem(disk_efi, 'fat')
-        print_step('Formatting root partition...')
         disk.create_filesystem(disk_root, 'ext4')
+    elif new_parts:
+        print_step('Creating new partitions in unallocated space...')
+        last_end = disk.get_last_part_end(raw_disk)
+        efi_end = f'{int(last_end.rstrip("MiB")) + 513}MiB' if last_end.endswith('MiB') else '513MiB'
+        
+        children_data = disk.get_disk_data()
+        raw_name = raw_disk.replace('/dev/', '')
+        dev_info = next((d for d in children_data['blockdevices'] if d['name'] == raw_name), None)
+        existing_parts = dev_info.get('children', []) if dev_info else []
+        efi_num = len(existing_parts) + 1
+        root_num = efi_num + 1
+        
+        disk.create_part(raw_disk, 'primary', last_end, efi_end, fs_type='fat32', is_efi=False)
+        disk.create_part(raw_disk, 'primary', efi_end, '100%', is_efi=False)
+        
+        import subprocess
+        subprocess.run(['sudo', 'parted', '-s', raw_disk, 'set', str(efi_num), 'esp', 'on'], check=True)
+        base_system.udevadm_settle()
+        
+        disk_efi  = disk.get_partition_path(raw_disk, efi_num)
+        disk_root = disk.get_partition_path(raw_disk, root_num)
+        disk.create_filesystem(disk_efi, 'fat')
+        disk.create_filesystem(disk_root, 'ext4')
+    elif disk_root:
+        print_step(f'Formatting selected root partition {disk_root}...')
+        if not disk_efi:
+            print_warning("No EFI partition found, but you chose to install on an existing partition.")
+            print_warning("This may prevent the system from booting. Wiping the disk is recommended.")
+            if input_prompt("Continue? (y/n)").lower() != 'y':
+                print_info("Installation cancelled.")
+                return
+        disk.create_filesystem(disk_root, 'ext4')
+
+    if not disk_root or not disk_efi:
+        print_error("Could not determine root or EFI partition, aborting installation.")
+        return
 
     # 用户配置
     username = input_prompt('Username (lowercase letters, digits, underscore only)')
