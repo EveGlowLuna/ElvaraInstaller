@@ -180,6 +180,8 @@ class InstallWorker(QObject):
             wipe        = kw['wipe']
             new_parts   = kw.get('new_parts', False)
 
+            boot_mode = efi.get_boot_mode()
+            
             # 步骤 0：分区
             self.step.emit(0, INSTALL_STEPS[0][0])
             # 先尝试 umount，忽略失败（磁盘可能没挂载）
@@ -187,27 +189,36 @@ class InstallWorker(QObject):
             r = _sp.run(['sudo', 'umount', '-R', '/mnt'], capture_output=True)
             if r.returncode != 0:
                 _sp.run(['sudo', 'umount', '-Rl', '/mnt'], capture_output=True)
+            
             if wipe:
-                # 清盘重建：create_label + EFI + root
                 raw_disk = kw['raw_disk']
-                part_size_gib = kw.get('part_size_gib')
-                end_size = '100%' if part_size_gib is None else f'{part_size_gib}GiB'
-                disk.create_label(raw_disk)
-                disk.create_part(raw_disk, 'primary', '1MiB', '513MiB', fs_type='fat32', is_efi=True)
-                disk.create_part(raw_disk, 'primary', '513MiB', end_size, is_efi=False)
-                base_system.udevadm_settle()
-                disk_efi  = disk.get_partition_path(raw_disk, 1)
-                disk.create_filesystem(disk_efi, 'fat')
-                disk_root = disk.get_partition_path(raw_disk, 2)
-                disk.create_filesystem(disk_root, 'ext4')
+                disk.create_label(raw_disk, boot_mode)
+                if boot_mode == 'boot':
+                    disk.create_part(raw_disk, 'primary', '1MiB', '100%', is_boot=True, part_num=1)
+                    base_system.udevadm_settle()
+                    disk_root = disk.get_partition_path(raw_disk, 1)
+                    disk_efi = None
+                    disk.create_filesystem(disk_root, 'ext4')
+                else:
+                    part_size_gib = kw.get('part_size_gib')
+                    end_size = '100%' if part_size_gib is None else f'{part_size_gib}GiB'
+                    disk.create_part(raw_disk, 'primary', '1MiB', '513MiB', fs_type='fat32')
+                    disk.create_part(raw_disk, 'primary', '513MiB', end_size)
+                    base_system.udevadm_settle()
+                    disk_efi  = disk.get_partition_path(raw_disk, 1)
+                    disk_root = disk.get_partition_path(raw_disk, 2)
+                    _sp.run(['sudo', 'parted', '-s', raw_disk, 'set', '1', 'esp', 'on'], check=True)
+                    disk.create_filesystem(disk_efi, 'fat')
+                    disk.create_filesystem(disk_root, 'ext4')
             elif new_parts:
-                # 在未分配空间追加分区：不清盘，直接 mkpart
+                if boot_mode == 'boot':
+                    raise RuntimeError("在 BIOS 系统上，不支持在已有分区的磁盘上创建新分区。请选择清空磁盘。")
+                
                 raw_disk = kw['raw_disk']
                 part_size_gib = kw.get('part_size_gib')
-                # 获取当前最后一个分区的结束位置
                 last_end = disk.get_last_part_end(raw_disk)
                 efi_end  = f'{int(last_end.rstrip("MiB")) + 513}MiB' if last_end.endswith('MiB') else '513MiB'
-                # 获取新分区编号
+                
                 children_data = disk.get_disk_data()
                 raw_name  = raw_disk.replace('/dev/', '')
                 dev_info  = next((d for d in children_data['blockdevices'] if d['name'] == raw_name), None)
@@ -215,32 +226,40 @@ class InstallWorker(QObject):
                 efi_num   = len(existing) + 1
                 root_num  = efi_num + 1
                 end_size  = '100%' if part_size_gib is None else f'{part_size_gib}GiB'
-                disk.create_part(raw_disk, 'primary', last_end, efi_end, fs_type='fat32', is_efi=False)
-                disk.create_part(raw_disk, 'primary', efi_end, end_size, is_efi=False)
-                # 手动设 esp flag
-                import subprocess as _sp
+                
+                disk.create_part(raw_disk, 'primary', last_end, efi_end, fs_type='fat32')
+                disk.create_part(raw_disk, 'primary', efi_end, end_size)
                 _sp.run(['sudo', 'parted', '-s', raw_disk, 'set', str(efi_num), 'esp', 'on'], check=True)
                 base_system.udevadm_settle()
                 disk_efi  = disk.get_partition_path(raw_disk, efi_num)
                 disk_root = disk.get_partition_path(raw_disk, root_num)
                 disk.create_filesystem(disk_efi, 'fat')
                 disk.create_filesystem(disk_root, 'ext4')
-            elif disk_efi is not None:
-                # 已有EFI分区，只格式化root
+            elif disk_root:
+                if not disk_efi and boot_mode != 'boot':
+                    raise RuntimeError("在 UEFI 系统上，必须存在 EFI 分区。")
                 disk.create_filesystem(disk_root, 'ext4')
             else:
-                # 选了已有分区但磁盘没有EFI，清盘重建
+                # Fallback for empty disk without wipe flag
                 raw_disk = kw['raw_disk']
-                part_size_gib = kw.get('part_size_gib')
-                end_size = '100%' if part_size_gib is None else f'{part_size_gib}GiB'
-                disk.create_label(raw_disk)
-                disk.create_part(raw_disk, 'primary', '1MiB', '513MiB', fs_type='fat32', is_efi=True)
-                disk.create_part(raw_disk, 'primary', '513MiB', end_size, is_efi=False)
-                base_system.udevadm_settle()
-                disk_efi  = disk.get_partition_path(raw_disk, 1)
-                disk.create_filesystem(disk_efi, 'fat')
-                disk_root = disk.get_partition_path(raw_disk, 2)
-                disk.create_filesystem(disk_root, 'ext4')
+                disk.create_label(raw_disk, boot_mode)
+                if boot_mode == 'boot':
+                    disk.create_part(raw_disk, 'primary', '1MiB', '100%', is_boot=True, part_num=1)
+                    base_system.udevadm_settle()
+                    disk_root = disk.get_partition_path(raw_disk, 1)
+                    disk_efi = None
+                    disk.create_filesystem(disk_root, 'ext4')
+                else:
+                    part_size_gib = kw.get('part_size_gib')
+                    end_size = '100%' if part_size_gib is None else f'{part_size_gib}GiB'
+                    disk.create_part(raw_disk, 'primary', '1MiB', '513MiB', fs_type='fat32')
+                    disk.create_part(raw_disk, 'primary', '513MiB', end_size)
+                    base_system.udevadm_settle()
+                    disk_efi  = disk.get_partition_path(raw_disk, 1)
+                    disk_root = disk.get_partition_path(raw_disk, 2)
+                    _sp.run(['sudo', 'parted', '-s', raw_disk, 'set', '1', 'esp', 'on'], check=True)
+                    disk.create_filesystem(disk_efi, 'fat')
+                    disk.create_filesystem(disk_root, 'ext4')
 
             # 挂载
             self.step.emit(1, INSTALL_STEPS[1][0])
@@ -276,23 +295,12 @@ class InstallWorker(QObject):
 
             # 步骤 5：引导（先装 grub，再跑 custom，grub 是核心不能被 custom 失败影响）
             self.step.emit(5, INSTALL_STEPS[5][0])
-            boot_mode = efi.get_boot_mode()
-            if boot_mode == 'uefi' and disk_efi is not None:
-                target = '--target=x86_64-efi'
-                base_system.arch_chroot('/mnt', [
-                    'grub-install', target,
-                    '--efi-directory=/boot', '--bootloader-id=GRUB',
-                ])
-            elif boot_mode == 'uefi32' and disk_efi is not None:
-                target = '--target=i386-efi'
-                base_system.arch_chroot('/mnt', [
-                    'grub-install', target,
-                    '--efi-directory=/boot', '--bootloader-id=GRUB',
-                ])
+            if boot_mode == 'boot':
+                base_system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', kw['raw_disk']])
             else:
-                base_system.arch_chroot('/mnt', [
-                    'grub-install', '--target=i386-pc', kw['raw_disk'],
-                ])
+                target = '--target=x86_64-efi' if boot_mode == 'uefi' else '--target=i386-efi'
+                base_system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
+            
             base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
 
             _load_custom().run('/mnt')
@@ -491,21 +499,35 @@ class DiskPage(QWidget):
         dev = self._devices[row]
         children = dev.get('children', [])
         self._part_list.clear()
+        
+        boot_mode = efi.get_boot_mode()
+
         if children:
             for c in children:
                 self._part_list.addItem(
                     f'  /dev/{c["name"]}  ({c.get("fstype") or "未知"})  {c.get("size", "")}')
-            # 用磁盘总量减去各分区大小算未分配空间，lsblk 数据直接用，不调外部命令
-            try:
-                total = _parse_size_gib(dev.get('size', '0G'))
-                used  = sum(_parse_size_gib(c.get('size', '0G')) for c in children)
-                unalloc = max(0.0, total - used)
-            except Exception:
-                unalloc = 0.0
-            if unalloc >= 0.5:
-                self._part_list.addItem(f'  ＋ 在未分配空间新建分区 / 清空磁盘重装  （未分配 {unalloc:.1f} GiB）')
-            else:
+            
+            # For BIOS mode, don't allow creating new partitions if some already exist.
+            # Force the user to either pick an existing one or wipe the disk.
+            if boot_mode == 'boot':
                 self._part_list.addItem('  ＋ 清空磁盘重装')
+                self._unalloc_gib = 0 # Ensure the next step knows not to offer new part
+            else:
+                # UEFI mode allows creating new partitions in unallocated space
+                try:
+                    total = _parse_size_gib(dev.get('size', '0G'))
+                    used  = sum(_parse_size_gib(c.get('size', '0G')) for c in children)
+                    unalloc = max(0.0, total - used)
+                    self._unalloc_gib = unalloc
+                except Exception:
+                    unalloc = 0.0
+                    self._unalloc_gib = 0.0
+                
+                if unalloc >= 0.5:
+                    self._part_list.addItem(f'  ＋ 在未分配空间新建分区 / 清空磁盘重装  （未分配 {unalloc:.1f} GiB）')
+                else:
+                    self._part_list.addItem('  ＋ 清空磁盘重装')
+
             self._part_list.setCurrentRow(0)
             self._part_label.setText('选择安装到哪个分区：')
             self._part_label.setVisible(True)
@@ -513,6 +535,7 @@ class DiskPage(QWidget):
         else:
             self._part_label.setVisible(False)
             self._part_list.setVisible(False)
+            self._unalloc_gib = _parse_size_gib(dev.get('size', '0G'))
 
     def _handle_next(self) -> None:
         row = self._list.currentRow()

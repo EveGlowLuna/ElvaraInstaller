@@ -70,15 +70,16 @@ def create_filesystem(target: str, fs_type: str = 'ext4') -> None:
     _run(args)
 
 
-def create_label(target: str) -> None:
-    _run(['sudo', 'parted', '-s', target, 'mklabel', 'gpt'])
+def create_label(target: str, boot_mode: str = 'uefi') -> None:
+    label_type = 'gpt' if boot_mode.startswith('uefi') else 'msdos'
+    _run(['sudo', 'parted', '-s', target, 'mklabel', label_type])
 
 
 def create_part(target_disk: str, part_label: str, start_size: str, end_size: str,
-                fs_type: str = 'ext4', is_efi: bool = False) -> None:
+                fs_type: str = 'ext4', is_boot: bool = False, part_num: int = 1) -> None:
     _run(['sudo', 'parted', '-s', target_disk, 'mkpart', part_label, fs_type, start_size, end_size])
-    if is_efi:
-        _run(['sudo', 'parted', '-s', target_disk, 'set', '1', 'esp', 'on'])
+    if is_boot:
+        _run(['sudo', 'parted', '-s', target_disk, 'set', str(part_num), 'boot', 'on'])
 
 
 def get_last_part_end(disk_path: str) -> str:
