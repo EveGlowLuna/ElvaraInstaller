@@ -6,6 +6,7 @@ build
 .venv
 .vscode
 **/__pycache__
+.marscode
 cmd_history.txt
 install.log
 *.spec
