@@ -7,12 +7,9 @@ import os
 
 
 def _load_custom():
-    """加载 custom/custom.py 并返回 CustomInstaller 实例。"""
-    if getattr(sys, 'frozen', False):
-        base = os.path.dirname(sys.executable)
-    else:
-        base = os.path.dirname(os.path.abspath(__file__))
-    custom_path = os.path.join(base, 'custom', 'custom.py')
+    # 打包后 _MEIPASS 是解压目录，未打包则用脚本所在目录
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    custom_path = os.path.join(os.path.dirname(base) if getattr(sys, 'frozen', False) else base, 'custom', 'custom.py')
     spec = importlib.util.spec_from_file_location('custom.custom', custom_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -41,8 +38,7 @@ def size_to_gb(size_str: str) -> float:
         return 0.0
 
 
-# ─── 中文终端（main）用的输出函数 ────────────────────────────────────────────
-
+# 图形终端（支持中文）用的样式
 class Style:
     RESET = '\033[0m'
     BOLD = '\033[1m'
@@ -60,15 +56,14 @@ def _header(title: str):
     print(Style.CYAN + '║' + ' ' * (w - 2) + '║' + Style.RESET)
     print(Style.CYAN + '╚' + '═' * (w - 2) + '╝' + Style.RESET)
 
-def _step(t):   print(Style.BOLD + Style.BLUE  + f'▶ {t}' + Style.RESET)
-def _info(t):   print(Style.CYAN               + f'  → {t}' + Style.RESET)
-def _warn(t):   print(Style.YELLOW             + f'  ⚠ {t}' + Style.RESET)
-def _err(t):    print(Style.RED                + f'  ✗ {t}' + Style.RESET)
+def _step(t):   print(Style.BOLD + Style.BLUE   + f'▶ {t}' + Style.RESET)
+def _info(t):   print(Style.CYAN                + f'  → {t}' + Style.RESET)
+def _warn(t):   print(Style.YELLOW              + f'  ⚠ {t}' + Style.RESET)
+def _err(t):    print(Style.RED                 + f'  ✗ {t}' + Style.RESET)
 def _ask(t):    return input(Style.BOLD + Style.GREEN + f'  ? {t} ' + Style.RESET)
 
 
-# ─── TTY 用的输出函数（纯 ASCII，无中文）────────────────────────────────────
-
+# TTY（不支持中文）用的纯 ASCII 输出
 def _t_header(title: str):
     w = 60
     print('=' * w)
@@ -82,8 +77,7 @@ def _t_err(t):  print(f'   [x] {t}')
 def _t_ask(t):  return input(f'  ? {t} ')
 
 
-# ─── main：图形终端，中文界面 ────────────────────────────────────────────────
-
+# 图形终端安装入口，界面为中文
 def main():
     _header('Elvara 安装程序')
 
@@ -93,6 +87,7 @@ def main():
     else:
         _info(f'当前启动模式：{boot_mode.upper()}')
 
+    # 列出所有磁盘供用户选择
     _step('扫描磁盘...')
     diskparts = disk.get_disk_data()
     _info('可用磁盘：')
@@ -114,10 +109,12 @@ def main():
     disk_root = disk_efi = None
     wipe_disk = new_parts = False
 
+    # 预先获取已存在的 EFI 分区
     if boot_mode != 'boot':
         disk_efi = efi.get_efi_part(idx)
 
     if children:
+        # 磁盘已有分区，让用户选择操作
         _info('磁盘已有分区：')
         for i, c in enumerate(children):
             print(f"    {i + 1}: /dev/{c['name']} (类型: {c.get('fstype', '未知')}): {c['size']}")
@@ -156,6 +153,7 @@ def main():
             except ValueError:
                 _err('请输入有效数字。')
     else:
+        # 磁盘无分区，直接清空重建
         wipe_disk = True
 
     if wipe_disk:
@@ -199,6 +197,7 @@ def main():
         disk.create_filesystem(disk_root, 'ext4')
 
     elif disk_root:
+        # 使用已有分区，只格式化根分区
         _step(f'格式化所选根分区 {disk_root}...')
         if not disk_efi and boot_mode != 'boot':
             _warn('未找到 EFI 分区，系统可能无法启动，建议清空磁盘重装。')
@@ -227,6 +226,7 @@ def main():
     base_system.install_base('/mnt')
     base_system.generate_fstab('/mnt')
 
+    # 配置 locale、时区、主机名、键盘布局
     _step('配置系统区域设置...')
     base_system.write_file('/mnt', '/etc/locale.gen', 'zh_CN.UTF-8 UTF-8\n', 'a')
     base_system.arch_chroot('/mnt', ['locale-gen'])
@@ -237,6 +237,7 @@ def main():
         f'127.0.0.1   localhost\n::1         localhost\n127.0.1.1   {uhost}.localdomain   {uhost}\n')
     base_system.write_file('/mnt', '/etc/vconsole.conf', f'KEYMAP={kb_layout}\n')
 
+    # 创建用户并设置密码和 sudo 权限
     _step('创建用户账户...')
     base_system.create_user('/mnt', username)
     base_system.set_passwd('/mnt', username, userpwd)
@@ -249,6 +250,7 @@ def main():
     _step('重建 initramfs...')
     base_system.arch_chroot('/mnt', ['mkinitcpio', '-P'])
 
+    # 安装 GRUB，BIOS 和 UEFI 参数不同
     _step('安装引导程序（GRUB）...')
     if boot_mode == 'boot':
         base_system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', raw_disk])
@@ -257,6 +259,7 @@ def main():
         base_system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
     base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
 
+    # 执行自定义逻辑
     _step('执行自定义脚本...')
     _load_custom().run('/mnt')
 
@@ -267,8 +270,7 @@ def main():
     _info('现在可以重启系统了。')
 
 
-# ─── main_tty：TTY，英文界面 ─────────────────────────────────────────────────
-
+# TTY 安装入口，界面为英文（TTY 不支持中文字体）
 def main_tty():
     _t_header('Elvara Installer')
 
@@ -278,6 +280,7 @@ def main_tty():
     else:
         _t_info(f'Boot mode: {boot_mode.upper()}')
 
+    # List all disks for user to choose
     _t_step('Scanning disks...')
     diskparts = disk.get_disk_data()
     _t_info('Available disks:')
@@ -299,10 +302,12 @@ def main_tty():
     disk_root = disk_efi = None
     wipe_disk = new_parts = False
 
+    # Pre-fetch existing EFI partition
     if boot_mode != 'boot':
         disk_efi = efi.get_efi_part(idx)
 
     if children:
+        # Disk has existing partitions
         _t_info('Existing partitions:')
         for i, c in enumerate(children):
             print(f"    {i + 1}: /dev/{c['name']} (type: {c.get('fstype', 'unknown')}): {c['size']}")
@@ -341,6 +346,7 @@ def main_tty():
             except ValueError:
                 _t_err('Please enter a valid number.')
     else:
+        # No existing partitions, wipe and repartition
         wipe_disk = True
 
     if wipe_disk:
@@ -384,6 +390,7 @@ def main_tty():
         disk.create_filesystem(disk_root, 'ext4')
 
     elif disk_root:
+        # Use existing partition, only format root
         _t_step(f'Formatting root partition {disk_root}...')
         if not disk_efi and boot_mode != 'boot':
             _t_warn('No EFI partition found. System may not boot. Wiping the disk is recommended.')
@@ -412,6 +419,7 @@ def main_tty():
     base_system.install_base('/mnt')
     base_system.generate_fstab('/mnt')
 
+    # Configure locale, timezone, hostname, keyboard
     _t_step('Configuring locale...')
     base_system.write_file('/mnt', '/etc/locale.gen', 'zh_CN.UTF-8 UTF-8\n', 'a')
     base_system.arch_chroot('/mnt', ['locale-gen'])
@@ -422,6 +430,7 @@ def main_tty():
         f'127.0.0.1   localhost\n::1         localhost\n127.0.1.1   {uhost}.localdomain   {uhost}\n')
     base_system.write_file('/mnt', '/etc/vconsole.conf', f'KEYMAP={kb_layout}\n')
 
+    # Create user, set passwords and sudo
     _t_step('Creating user account...')
     base_system.create_user('/mnt', username)
     base_system.set_passwd('/mnt', username, userpwd)
@@ -434,6 +443,7 @@ def main_tty():
     _t_step('Rebuilding initramfs...')
     base_system.arch_chroot('/mnt', ['mkinitcpio', '-P'])
 
+    # Install GRUB, different targets for BIOS and UEFI
     _t_step('Installing bootloader (GRUB)...')
     if boot_mode == 'boot':
         base_system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', raw_disk])
@@ -442,6 +452,7 @@ def main_tty():
         base_system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
     base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
 
+    # Run custom installer logic
     _t_step('Running custom script...')
     _load_custom().run('/mnt')
 
