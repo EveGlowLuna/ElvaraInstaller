@@ -6,6 +6,7 @@ import os
 
 
 def _load_custom():
+    """加载 custom/custom.py 并返回 CustomInstaller 实例。"""
     if getattr(sys, 'frozen', False):
         base = os.path.dirname(sys.executable)
     else:
@@ -14,7 +15,7 @@ def _load_custom():
     spec = importlib.util.spec_from_file_location('custom.custom', custom_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod
+    return mod.CustomInstaller()
 
 
 def size_to_gb(size_str: str) -> float:

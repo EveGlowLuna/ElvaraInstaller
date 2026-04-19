@@ -21,6 +21,7 @@ import sys
 import os
 
 def _load_custom():
+    """加载 custom/custom.py 并返回 CustomInstaller 实例。"""
     # 打包后用可执行文件所在目录，未打包用脚本所在目录
     if getattr(sys, 'frozen', False):
         base = os.path.dirname(sys.executable)
@@ -28,6 +29,9 @@ def _load_custom():
         base = os.path.dirname(os.path.abspath(__file__))
     custom_path = os.path.join(base, 'custom', 'custom.py')
     spec = importlib.util.spec_from_file_location('custom.custom', custom_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.CustomInstaller()
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
