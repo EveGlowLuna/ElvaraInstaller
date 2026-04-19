@@ -1,6 +1,7 @@
 from installer import disk, base_system, efi
 import shutil
 import importlib.util
+import subprocess
 import sys
 import os
 
@@ -40,7 +41,8 @@ def size_to_gb(size_str: str) -> float:
         return 0.0
 
 
-# ANSI 颜色与样式定义
+# ─── 中文终端（main）用的输出函数 ────────────────────────────────────────────
+
 class Style:
     RESET = '\033[0m'
     BOLD = '\033[1m'
@@ -49,134 +51,121 @@ class Style:
     YELLOW = '\033[93m'
     BLUE = '\033[94m'
     CYAN = '\033[96m'
-    MAGENTA = '\033[95m'
 
-def print_header(title: str):
-    width = 60
-    border = Style.CYAN + '╔' + '═' * (width - 2) + '╗' + Style.RESET
-    empty_line = Style.CYAN + '║' + ' ' * (width - 2) + '║' + Style.RESET
-    title_line = Style.CYAN + '║' + Style.BOLD + Style.GREEN + title.center(width - 2) + Style.RESET + Style.CYAN + '║' + Style.RESET
-    print(border)
-    print(empty_line)
-    print(title_line)
-    print(empty_line)
-    print(Style.CYAN + '╚' + '═' * (width - 2) + '╝' + Style.RESET)
+def _header(title: str):
+    w = 60
+    print(Style.CYAN + '╔' + '═' * (w - 2) + '╗' + Style.RESET)
+    print(Style.CYAN + '║' + ' ' * (w - 2) + '║' + Style.RESET)
+    print(Style.CYAN + '║' + Style.BOLD + Style.GREEN + title.center(w - 2) + Style.RESET + Style.CYAN + '║' + Style.RESET)
+    print(Style.CYAN + '║' + ' ' * (w - 2) + '║' + Style.RESET)
+    print(Style.CYAN + '╚' + '═' * (w - 2) + '╝' + Style.RESET)
 
-def print_step(text: str):
-    print(Style.BOLD + Style.BLUE + f'▶ {text}' + Style.RESET)
+def _step(t):   print(Style.BOLD + Style.BLUE  + f'▶ {t}' + Style.RESET)
+def _info(t):   print(Style.CYAN               + f'  → {t}' + Style.RESET)
+def _warn(t):   print(Style.YELLOW             + f'  ⚠ {t}' + Style.RESET)
+def _err(t):    print(Style.RED                + f'  ✗ {t}' + Style.RESET)
+def _ask(t):    return input(Style.BOLD + Style.GREEN + f'  ? {t} ' + Style.RESET)
 
-def print_info(text: str):
-    print(Style.CYAN + f'  → {text}' + Style.RESET)
 
-def print_warning(text: str):
-    print(Style.YELLOW + f'  ⚠ {text}' + Style.RESET)
+# ─── TTY 用的输出函数（纯 ASCII，无中文）────────────────────────────────────
 
-def print_error(text: str):
-    print(Style.RED + f'  ✗ {text}' + Style.RESET)
+def _t_header(title: str):
+    w = 60
+    print('=' * w)
+    print(title.center(w))
+    print('=' * w)
 
-def input_prompt(text: str) -> str:
-    return input(Style.BOLD + Style.GREEN + f'  ? {text} ' + Style.RESET)
+def _t_step(t): print(f'>> {t}')
+def _t_info(t): print(f'   {t}')
+def _t_warn(t): print(f'   [!] {t}')
+def _t_err(t):  print(f'   [x] {t}')
+def _t_ask(t):  return input(f'  ? {t} ')
 
-def run_install():
-    # 欢迎画面
-    print_header('Elvara Installer')
+
+# ─── main：图形终端，中文界面 ────────────────────────────────────────────────
+
+def main():
+    _header('Elvara 安装程序')
 
     boot_mode = efi.get_boot_mode()
     if boot_mode == 'boot':
-        print_warning('Running in BIOS/CSM mode.')
-        print_info('The installer will proceed with a BIOS-compatible setup.')
+        _warn('当前为 BIOS/CSM 模式，将使用 BIOS 兼容方案安装。')
     else:
-        print_info(f'Running in {boot_mode.upper()} mode.')
+        _info(f'当前启动模式：{boot_mode.upper()}')
 
-    print_step('Scanning disks...')
+    _step('扫描磁盘...')
     diskparts = disk.get_disk_data()
-    print_info('Available disks:')
-    for i, dkpt in enumerate(diskparts['blockdevices']):
-        size = dkpt['size']
-        model = dkpt.get('model', 'Unknown')
-        print(f"    {i + 1}: /dev/{dkpt['name']} - {model}: {size}")
+    _info('可用磁盘：')
+    for i, d in enumerate(diskparts['blockdevices']):
+        print(f"    {i + 1}: /dev/{d['name']} - {d.get('model', '未知')}: {d['size']}")
 
     while True:
         try:
-            choice = input_prompt('Select disk to install (number)')
-            disk_select_index = int(choice) - 1
-            if disk_select_index < 0 or disk_select_index >= len(diskparts['blockdevices']):
-                print_error('Invalid disk number, please try again.')
-                continue
-            break
+            idx = int(_ask('选择安装目标磁盘（编号）')) - 1
+            if 0 <= idx < len(diskparts['blockdevices']):
+                break
+            _err('编号无效，请重试。')
         except ValueError:
-            print_error('Please enter a valid number.')
+            _err('请输入有效数字。')
 
-    selected_dev = diskparts['blockdevices'][disk_select_index]
+    selected_dev = diskparts['blockdevices'][idx]
     raw_disk = f'/dev/{selected_dev["name"]}'
     children = selected_dev.get('children', [])
-    disk_root = None
-    disk_efi = None
-    wipe_disk = False
-    new_parts = False
+    disk_root = disk_efi = None
+    wipe_disk = new_parts = False
 
-    # 在选择分区操作前，预先检查并获取已存在的 EFI 分区
     if boot_mode != 'boot':
-        disk_efi = efi.get_efi_part(disk_select_index)
+        disk_efi = efi.get_efi_part(idx)
 
     if children:
-        print_info('Disk contains existing partitions:')
-        for i, child in enumerate(children):
-            fstype = child.get('fstype', 'unknown')
-            print(f"    {i + 1}: /dev/{child['name']} (type: {fstype}): {child['size']}")
+        _info('磁盘已有分区：')
+        for i, c in enumerate(children):
+            print(f"    {i + 1}: /dev/{c['name']} (类型: {c.get('fstype', '未知')}): {c['size']}")
 
-        total_size = size_to_gb(selected_dev.get('size', '0G'))
-        used_size = sum(size_to_gb(c.get('size', '0G')) for c in children)
-        unalloc_gib = max(0.0, total_size - used_size)
+        total = size_to_gb(selected_dev.get('size', '0G'))
+        used  = sum(size_to_gb(c.get('size', '0G')) for c in children)
+        unalloc = max(0.0, total - used)
 
-        options_start_index = len(children) + 1
         options = []
-        if unalloc_gib >= 0.5:
-            options.append(f"Create new partition in unallocated space ({unalloc_gib:.1f} GiB available)")
-        options.append("Wipe entire disk and reinstall")
+        if unalloc >= 0.5:
+            options.append(f'在未分配空间新建分区（剩余 {unalloc:.1f} GiB）')
+        options.append('清空整个磁盘重新安装')
 
-        for i, option in enumerate(options):
-            print(f"    {options_start_index + i}: {option}")
+        base = len(children) + 1
+        for i, o in enumerate(options):
+            print(f'    {base + i}: {o}')
 
         while True:
             try:
-                choice_str = input_prompt('Select root partition or an action (number)')
-                choice = int(choice_str)
+                choice = int(_ask('选择分区或操作（编号）'))
                 if 1 <= choice <= len(children):
                     disk_root = f'/dev/{children[choice - 1]["name"]}'
                     break
                 elif len(children) < choice <= len(children) + len(options):
-                    option_index = choice - len(children) - 1
-                    selected_option = options[option_index]
-                    if "Create new partition" in selected_option:
+                    opt = options[choice - len(children) - 1]
+                    if '新建分区' in opt:
                         if boot_mode == 'boot':
-                            print_error("Creating new partitions on a BIOS system with existing partitions is not supported.")
-                            print_error("This feature is only available for UEFI systems to avoid MBR limitations.")
-                            print_error("Please choose to wipe the disk or use an existing partition.")
+                            _err('BIOS 模式下不支持在已有分区的磁盘上新建分区，请选择清空磁盘或使用现有分区。')
                             continue
                         new_parts = True
-                        disk_root = None
-                    elif "Wipe entire disk" in selected_option:
+                    else:
                         wipe_disk = True
-                        disk_root = None
                     break
                 else:
-                    print_error('Invalid option, please try again.')
+                    _err('无效选项，请重试。')
             except ValueError:
-                print_error('Please enter a valid number.')
+                _err('请输入有效数字。')
     else:
         wipe_disk = True
-        disk_root = None
 
     if wipe_disk:
-        print_step('Wiping disk and creating new partitions...')
+        _step('清空磁盘并创建新分区...')
         disk.create_label(raw_disk, boot_mode)
-        
         if boot_mode == 'boot':
             disk.create_part(raw_disk, 'primary', '1MiB', '100%', is_boot=True, part_num=1)
             base_system.udevadm_settle()
             disk_root = disk.get_partition_path(raw_disk, 1)
-            disk_efi = None
+            disk_efi  = None
             disk.create_filesystem(disk_root, 'ext4')
         else:
             disk.create_part(raw_disk, 'primary', '1MiB', '513MiB', fs_type='fat32')
@@ -184,71 +173,61 @@ def run_install():
             base_system.udevadm_settle()
             disk_efi  = disk.get_partition_path(raw_disk, 1)
             disk_root = disk.get_partition_path(raw_disk, 2)
-            import subprocess
             subprocess.run(['sudo', 'parted', '-s', raw_disk, 'set', '1', 'esp', 'on'], check=True)
             disk.create_filesystem(disk_efi, 'fat')
             disk.create_filesystem(disk_root, 'ext4')
-            
+
     elif new_parts:
-        print_step('Creating new partitions in unallocated space...')
-        last_end = disk.get_last_part_end(raw_disk)
-        
+        _step('在未分配空间创建新分区...')
         if boot_mode == 'boot':
-            print_error("Cannot create new partitions on a BIOS system with existing partitions.")
+            _err('BIOS 模式下无法在已有分区的磁盘上创建新分区。')
             return
-        
-        efi_end = f'{int(last_end.rstrip("MiB")) + 513}MiB' if last_end.endswith('MiB') else '513MiB'
-        
-        children_data = disk.get_disk_data()
-        raw_name = raw_disk.replace('/dev/', '')
-        dev_info = next((d for d in children_data['blockdevices'] if d['name'] == raw_name), None)
-        existing_parts = dev_info.get('children', []) if dev_info else []
-        efi_num = len(existing_parts) + 1
+        last_end = disk.get_last_part_end(raw_disk)
+        efi_end  = f'{int(last_end.rstrip("MiB")) + 513}MiB' if last_end.endswith('MiB') else '513MiB'
+        info     = disk.get_disk_data()
+        dev_info = next((d for d in info['blockdevices'] if d['name'] == raw_disk.replace('/dev/', '')), None)
+        existing = dev_info.get('children', []) if dev_info else []
+        efi_num  = len(existing) + 1
         root_num = efi_num + 1
-        
         disk.create_part(raw_disk, 'primary', last_end, efi_end, fs_type='fat32')
         disk.create_part(raw_disk, 'primary', efi_end, '100%')
-        
-        import subprocess
         subprocess.run(['sudo', 'parted', '-s', raw_disk, 'set', str(efi_num), 'esp', 'on'], check=True)
         base_system.udevadm_settle()
-        
         disk_efi  = disk.get_partition_path(raw_disk, efi_num)
         disk_root = disk.get_partition_path(raw_disk, root_num)
         disk.create_filesystem(disk_efi, 'fat')
         disk.create_filesystem(disk_root, 'ext4')
-        
+
     elif disk_root:
-        print_step(f'Formatting selected root partition {disk_root}...')
+        _step(f'格式化所选根分区 {disk_root}...')
         if not disk_efi and boot_mode != 'boot':
-            print_warning("No EFI partition found, but you chose to install on an existing partition.")
-            print_warning("This may prevent the system from booting. Wiping the disk is recommended.")
-            if input_prompt("Continue? (y/n)").lower() != 'y':
-                print_info("Installation cancelled.")
+            _warn('未找到 EFI 分区，系统可能无法启动，建议清空磁盘重装。')
+            if _ask('仍然继续？(y/n)').lower() != 'y':
+                _info('安装已取消。')
                 return
         disk.create_filesystem(disk_root, 'ext4')
 
     if not disk_root:
-        print_error("Could not determine root partition, aborting installation.")
+        _err('无法确定根分区，安装中止。')
         return
 
-    username = input_prompt('Username (lowercase letters, digits, underscore only)')
-    userpwd  = input_prompt('Password')
-    uhost    = input_prompt('Hostname [default: elvara]') or 'elvara'
-    print_info('Common timezones: Asia/Shanghai, Asia/Tokyo, Europe/London, America/New_York, UTC')
-    timezone  = input_prompt('Timezone [default: Asia/Shanghai]') or 'Asia/Shanghai'
-    print_info('Common keyboard layouts: us, gb, de, fr, es, cn')
-    kb_layout = input_prompt('Keyboard layout [default: us]') or 'us'
+    username = _ask('用户名（小写字母、数字、下划线）')
+    userpwd  = _ask('密码')
+    uhost    = _ask('主机名 [默认: elvara]') or 'elvara'
+    _info('常用时区：Asia/Shanghai、Asia/Tokyo、Europe/London、America/New_York、UTC')
+    timezone  = _ask('时区 [默认: Asia/Shanghai]') or 'Asia/Shanghai'
+    _info('常用键盘布局：us、gb、de、fr、es、cn')
+    kb_layout = _ask('键盘布局 [默认: us]') or 'us'
 
-    print_step('Mounting filesystems...')
+    _step('挂载文件系统...')
     disk.mount_disk(disk_root, disk_efi)
 
-    print_step('Installing base system (this may take a while)...')
+    _step('安装基础系统（可能需要较长时间）...')
     base_system.update_mirrorlist()
     base_system.install_base('/mnt')
     base_system.generate_fstab('/mnt')
 
-    print_step('Configuring locale...')
+    _step('配置系统区域设置...')
     base_system.write_file('/mnt', '/etc/locale.gen', 'zh_CN.UTF-8 UTF-8\n', 'a')
     base_system.arch_chroot('/mnt', ['locale-gen'])
     base_system.write_file('/mnt', '/etc/locale.conf', 'LANG=zh_CN.UTF-8\n')
@@ -258,41 +237,219 @@ def run_install():
         f'127.0.0.1   localhost\n::1         localhost\n127.0.1.1   {uhost}.localdomain   {uhost}\n')
     base_system.write_file('/mnt', '/etc/vconsole.conf', f'KEYMAP={kb_layout}\n')
 
-    print_step('Creating user account...')
+    _step('创建用户账户...')
     base_system.create_user('/mnt', username)
     base_system.set_passwd('/mnt', username, userpwd)
     base_system.set_passwd('/mnt', 'root', userpwd)
     base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
 
-    print_step('Enabling NetworkManager...')
+    _step('启用 NetworkManager...')
     base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
 
-    print_step('Rebuilding initramfs...')
+    _step('重建 initramfs...')
     base_system.arch_chroot('/mnt', ['mkinitcpio', '-P'])
 
-    print_step('Installing bootloader (GRUB)...')
+    _step('安装引导程序（GRUB）...')
     if boot_mode == 'boot':
         base_system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', raw_disk])
     else:
         target = '--target=x86_64-efi' if boot_mode == 'uefi' else '--target=i386-efi'
         base_system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
-        
     base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
 
-    print_step('Running custom script...')
+    _step('执行自定义脚本...')
     _load_custom().run('/mnt')
 
-    print_step('Unmounting filesystems...')
+    _step('卸载文件系统...')
     base_system.umount_all()
 
-    print_header('Installation Complete')
-    print_info('You may now reboot.')
+    _header('安装完成')
+    _info('现在可以重启系统了。')
 
-def main():
-    run_install()
+
+# ─── main_tty：TTY，英文界面 ─────────────────────────────────────────────────
 
 def main_tty():
-    run_install()
+    _t_header('Elvara Installer')
+
+    boot_mode = efi.get_boot_mode()
+    if boot_mode == 'boot':
+        _t_warn('BIOS/CSM mode detected. Proceeding with BIOS-compatible setup.')
+    else:
+        _t_info(f'Boot mode: {boot_mode.upper()}')
+
+    _t_step('Scanning disks...')
+    diskparts = disk.get_disk_data()
+    _t_info('Available disks:')
+    for i, d in enumerate(diskparts['blockdevices']):
+        print(f"    {i + 1}: /dev/{d['name']} - {d.get('model', 'Unknown')}: {d['size']}")
+
+    while True:
+        try:
+            idx = int(_t_ask('Select disk to install (number)')) - 1
+            if 0 <= idx < len(diskparts['blockdevices']):
+                break
+            _t_err('Invalid number, please try again.')
+        except ValueError:
+            _t_err('Please enter a valid number.')
+
+    selected_dev = diskparts['blockdevices'][idx]
+    raw_disk = f'/dev/{selected_dev["name"]}'
+    children = selected_dev.get('children', [])
+    disk_root = disk_efi = None
+    wipe_disk = new_parts = False
+
+    if boot_mode != 'boot':
+        disk_efi = efi.get_efi_part(idx)
+
+    if children:
+        _t_info('Existing partitions:')
+        for i, c in enumerate(children):
+            print(f"    {i + 1}: /dev/{c['name']} (type: {c.get('fstype', 'unknown')}): {c['size']}")
+
+        total = size_to_gb(selected_dev.get('size', '0G'))
+        used  = sum(size_to_gb(c.get('size', '0G')) for c in children)
+        unalloc = max(0.0, total - used)
+
+        options = []
+        if unalloc >= 0.5:
+            options.append(f'Create new partition in unallocated space ({unalloc:.1f} GiB available)')
+        options.append('Wipe entire disk and reinstall')
+
+        base = len(children) + 1
+        for i, o in enumerate(options):
+            print(f'    {base + i}: {o}')
+
+        while True:
+            try:
+                choice = int(_t_ask('Select partition or action (number)'))
+                if 1 <= choice <= len(children):
+                    disk_root = f'/dev/{children[choice - 1]["name"]}'
+                    break
+                elif len(children) < choice <= len(children) + len(options):
+                    opt = options[choice - len(children) - 1]
+                    if 'new partition' in opt:
+                        if boot_mode == 'boot':
+                            _t_err('Cannot create new partitions on a BIOS system with existing partitions.')
+                            continue
+                        new_parts = True
+                    else:
+                        wipe_disk = True
+                    break
+                else:
+                    _t_err('Invalid option, please try again.')
+            except ValueError:
+                _t_err('Please enter a valid number.')
+    else:
+        wipe_disk = True
+
+    if wipe_disk:
+        _t_step('Wiping disk and creating new partitions...')
+        disk.create_label(raw_disk, boot_mode)
+        if boot_mode == 'boot':
+            disk.create_part(raw_disk, 'primary', '1MiB', '100%', is_boot=True, part_num=1)
+            base_system.udevadm_settle()
+            disk_root = disk.get_partition_path(raw_disk, 1)
+            disk_efi  = None
+            disk.create_filesystem(disk_root, 'ext4')
+        else:
+            disk.create_part(raw_disk, 'primary', '1MiB', '513MiB', fs_type='fat32')
+            disk.create_part(raw_disk, 'primary', '513MiB', '100%')
+            base_system.udevadm_settle()
+            disk_efi  = disk.get_partition_path(raw_disk, 1)
+            disk_root = disk.get_partition_path(raw_disk, 2)
+            subprocess.run(['sudo', 'parted', '-s', raw_disk, 'set', '1', 'esp', 'on'], check=True)
+            disk.create_filesystem(disk_efi, 'fat')
+            disk.create_filesystem(disk_root, 'ext4')
+
+    elif new_parts:
+        _t_step('Creating new partitions in unallocated space...')
+        if boot_mode == 'boot':
+            _t_err('Cannot create new partitions on a BIOS system with existing partitions.')
+            return
+        last_end = disk.get_last_part_end(raw_disk)
+        efi_end  = f'{int(last_end.rstrip("MiB")) + 513}MiB' if last_end.endswith('MiB') else '513MiB'
+        info     = disk.get_disk_data()
+        dev_info = next((d for d in info['blockdevices'] if d['name'] == raw_disk.replace('/dev/', '')), None)
+        existing = dev_info.get('children', []) if dev_info else []
+        efi_num  = len(existing) + 1
+        root_num = efi_num + 1
+        disk.create_part(raw_disk, 'primary', last_end, efi_end, fs_type='fat32')
+        disk.create_part(raw_disk, 'primary', efi_end, '100%')
+        subprocess.run(['sudo', 'parted', '-s', raw_disk, 'set', str(efi_num), 'esp', 'on'], check=True)
+        base_system.udevadm_settle()
+        disk_efi  = disk.get_partition_path(raw_disk, efi_num)
+        disk_root = disk.get_partition_path(raw_disk, root_num)
+        disk.create_filesystem(disk_efi, 'fat')
+        disk.create_filesystem(disk_root, 'ext4')
+
+    elif disk_root:
+        _t_step(f'Formatting root partition {disk_root}...')
+        if not disk_efi and boot_mode != 'boot':
+            _t_warn('No EFI partition found. System may not boot. Wiping the disk is recommended.')
+            if _t_ask('Continue anyway? (y/n)').lower() != 'y':
+                _t_info('Installation cancelled.')
+                return
+        disk.create_filesystem(disk_root, 'ext4')
+
+    if not disk_root:
+        _t_err('Could not determine root partition, aborting.')
+        return
+
+    username = _t_ask('Username (lowercase letters, digits, underscore only)')
+    userpwd  = _t_ask('Password')
+    uhost    = _t_ask('Hostname [default: elvara]') or 'elvara'
+    _t_info('Common timezones: Asia/Shanghai, Asia/Tokyo, Europe/London, America/New_York, UTC')
+    timezone  = _t_ask('Timezone [default: Asia/Shanghai]') or 'Asia/Shanghai'
+    _t_info('Common keyboard layouts: us, gb, de, fr, es, cn')
+    kb_layout = _t_ask('Keyboard layout [default: us]') or 'us'
+
+    _t_step('Mounting filesystems...')
+    disk.mount_disk(disk_root, disk_efi)
+
+    _t_step('Installing base system (this may take a while)...')
+    base_system.update_mirrorlist()
+    base_system.install_base('/mnt')
+    base_system.generate_fstab('/mnt')
+
+    _t_step('Configuring locale...')
+    base_system.write_file('/mnt', '/etc/locale.gen', 'zh_CN.UTF-8 UTF-8\n', 'a')
+    base_system.arch_chroot('/mnt', ['locale-gen'])
+    base_system.write_file('/mnt', '/etc/locale.conf', 'LANG=zh_CN.UTF-8\n')
+    base_system.arch_chroot('/mnt', ['ln', '-sf', f'/usr/share/zoneinfo/{timezone}', '/etc/localtime'])
+    base_system.write_file('/mnt', '/etc/hostname', f'{uhost}\n')
+    base_system.write_file('/mnt', '/etc/hosts',
+        f'127.0.0.1   localhost\n::1         localhost\n127.0.1.1   {uhost}.localdomain   {uhost}\n')
+    base_system.write_file('/mnt', '/etc/vconsole.conf', f'KEYMAP={kb_layout}\n')
+
+    _t_step('Creating user account...')
+    base_system.create_user('/mnt', username)
+    base_system.set_passwd('/mnt', username, userpwd)
+    base_system.set_passwd('/mnt', 'root', userpwd)
+    base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
+
+    _t_step('Enabling NetworkManager...')
+    base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
+
+    _t_step('Rebuilding initramfs...')
+    base_system.arch_chroot('/mnt', ['mkinitcpio', '-P'])
+
+    _t_step('Installing bootloader (GRUB)...')
+    if boot_mode == 'boot':
+        base_system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', raw_disk])
+    else:
+        target = '--target=x86_64-efi' if boot_mode == 'uefi' else '--target=i386-efi'
+        base_system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
+    base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
+
+    _t_step('Running custom script...')
+    _load_custom().run('/mnt')
+
+    _t_step('Unmounting filesystems...')
+    base_system.umount_all()
+
+    _t_header('Installation Complete')
+    _t_info('You may now reboot.')
 
 
 if __name__ == '__main__':
