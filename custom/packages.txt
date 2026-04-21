@@ -1,3 +1,5 @@
+# 按需修改。
+
 base
 base-devel
 linux-zen
