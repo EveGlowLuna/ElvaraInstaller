@@ -7,12 +7,13 @@ import os
 
 
 def _load_custom():
-    # 打包后 _MEIPASS 是解压目录，未打包则用脚本所在目录
-    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    custom_path = os.path.join(os.path.dirname(base) if getattr(sys, 'frozen', False) else base, 'custom', 'custom.py')
+    # 打包后用可执行文件所在目录，未打包则用脚本所在目录
+    if getattr(sys, 'frozen', False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    custom_path = os.path.join(base, 'custom', 'custom.py')
     spec = importlib.util.spec_from_file_location('custom.custom', custom_path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
     return mod.CustomInstaller()
 
 

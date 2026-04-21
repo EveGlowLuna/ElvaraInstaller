@@ -32,9 +32,6 @@ def _load_custom():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.CustomInstaller()
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
 
 
 ICON_PATH = '/usr/share/pixmaps/elvara.png'
