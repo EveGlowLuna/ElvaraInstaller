@@ -1,0 +1,3 @@
+[submodule "custom/shorin-arch-setup"]
+	path = custom/shorin-arch-setup
+	url = https://github.com/EveGlowLuna/shorin-arch-setup-elvarainstaller.git
