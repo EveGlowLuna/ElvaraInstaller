@@ -14,6 +14,8 @@ def _load_custom():
         base = os.path.dirname(os.path.abspath(__file__))
     custom_path = os.path.join(base, 'custom', 'custom.py')
     spec = importlib.util.spec_from_file_location('custom.custom', custom_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
     return mod.CustomInstaller()
 
 
