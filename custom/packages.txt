@@ -12,3 +12,8 @@ grub
 efibootmgr
 networkmanager
 systemd-resolvconf
+
+# 自定义内容
+git
+dotnet-sdk
+go
