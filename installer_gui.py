@@ -293,8 +293,9 @@ class InstallWorker(QObject):
 
             # 步骤 4：定制脚本（由 custom.py 内部处理）
             self.step.emit(4, INSTALL_STEPS[4][0])
+            _load_custom().run('/mnt')
 
-            # 步骤 5：引导（先装 grub，再跑 custom，grub 是核心不能被 custom 失败影响）
+            # 步骤 5：引导
             self.step.emit(5, INSTALL_STEPS[5][0])
             if boot_mode == 'boot':
                 base_system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', kw['raw_disk']])
@@ -303,8 +304,6 @@ class InstallWorker(QObject):
                 base_system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
             
             base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
-
-            _load_custom().run('/mnt')
 
             base_system.umount_all()
             self.step.emit(6, INSTALL_STEPS[6][0])

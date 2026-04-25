@@ -39,7 +39,7 @@ class CustomInstaller:
             'grub_theme': '1CyberGRUB-2077',
             'flatpak_mirror': 'ustc',
         }
-        config_path = os.path.join(mount_point, 'tmp', 'setup-config.json')
+        config_path = os.path.join(mount_point, 'root', 'setup-config.json')
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
         with open(config_path, 'w') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)

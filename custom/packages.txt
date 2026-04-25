@@ -17,3 +17,4 @@ systemd-resolvconf
 git
 dotnet-sdk
 go
+reflector
