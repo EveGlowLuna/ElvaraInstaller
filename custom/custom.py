@@ -6,21 +6,26 @@ from installer import base_system
 
 
 class CustomInstaller:
-    DESKTOP_ENVIRONMENTS = [
-        ('shorinniri', 'Shorin Niri (推荐)'),
-        ('gnome', 'GNOME'),
-        ('kde', 'KDE Plasma'),
-        ('hyprniri', 'Shorin HyprNiri'),
-        ('shorindms', 'Shorin DMS'),
-        ('shorinnocniri', 'Shorin Noctalia'),
-        ('end4', 'End4 Quickshell'),
-        ('dms', 'DMS Quickshell'),
-        ('caelestia', 'Caelestia Quickshell'),
-        ('inir', 'Inir Quickshell'),
-        ('minimalniri', '极简版 Niri'),
-        ('minimallabwc', '极简版 Labwc'),
-        ('none', '不安装桌面环境'),
+    DESKTOP_OPTIONS = [
+        ('none',         '不安装桌面环境',       '仅基础系统，无图形界面'),
+        ('kde',          'KDE Plasma',           '功能完整的传统桌面，推荐新手'),
+        ('shorindms',    'Shorin DMS Niri',      'Shorin 定制 Niri，推荐'),
+        ('shorinnocniri','Shorin Noctalia Niri',  'Noctalia 主题 Niri 桌面'),
+        ('shorinniri',   'Shorin Niri',           'Shorin 标准 Niri 配置'),
+        ('minimalniri',  'Minimal Niri',          '极简 Niri，轻量快速'),
+        ('minimallabwc', 'Minimal Labwc',         '极简 Labwc 合成器'),
+        ('hyprniri',     'Shorin Hyprland+Niri',  'Hyprland 滚动模式'),
+        ('gnome',        'GNOME',                 '经典 GNOME 桌面'),
+        ('end4',         'Quickshell: End4',      'illogical-impulse 风格'),
+        ('dms',          'Quickshell: DMS',       'DankMaterialShell'),
+        ('caelestia',    'Quickshell: Caelestia', 'Caelestia 风格'),
+        ('inir',         'Quickshell: Inir',      'Inir 风格'),
     ]
+
+    WIKI_URL = (
+        'https://github.com/SHORiN-KiWATA/Shorin-ArchLinux-Guide/wiki/'
+        '%E4%B8%80%E9%94%AE%E9%85%8D%E7%BD%AE%E6%A1%8C%E9%9D%A2%E7%8E%AF%E5%A2%83'
+    )
 
     def run(self, mount_point: str) -> None:
         desktop_env = self._pick_desktop()
@@ -68,106 +73,101 @@ class CustomInstaller:
 
     def _pick_desktop_tty(self) -> str:
         print('\n请选择桌面环境：')
-        for i, (code, name) in enumerate(self.DESKTOP_ENVIRONMENTS, 1):
-            print(f'    {i}. {name}')
-        
+        for i, (code, name, desc) in enumerate(self.DESKTOP_OPTIONS, 1):
+            print(f'    {i}. {name}  —  {desc}')
         while True:
             try:
                 choice = int(input('请输入选择的编号：'))
-                if 1 <= choice <= len(self.DESKTOP_ENVIRONMENTS):
-                    return self.DESKTOP_ENVIRONMENTS[choice - 1][0]
+                if 1 <= choice <= len(self.DESKTOP_OPTIONS):
+                    return self.DESKTOP_OPTIONS[choice - 1][0]
                 print('无效的编号，请重试。')
             except ValueError:
                 print('请输入有效的数字。')
 
     def _pick_desktop_gui(self) -> str:
         try:
-            from PySide6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QWidget
-            from PySide6.QtCore import Qt
-            from PySide6.QtGui import QFont
+            from PySide6.QtWidgets import (
+                QApplication, QDialog, QVBoxLayout, QHBoxLayout,
+                QLabel, QListWidget, QListWidgetItem, QPushButton,
+            )
+            from PySide6.QtCore import Qt, QUrl, QSize
+            from PySide6.QtGui import QDesktopServices
 
             app = QApplication.instance()
             if app is None:
                 app = QApplication([])
 
-            dialog = QDialog()
-            dialog.setWindowTitle('选择桌面环境')
-            dialog.setMinimumSize(400, 320)
+            dlg = QDialog()
+            dlg.setWindowTitle('选择桌面环境')
+            dlg.setMinimumSize(560, 500)
+            dlg.setStyleSheet("""
+                QDialog { background: #f5f5f7; }
+                QLabel#title { font-size: 20px; font-weight: bold; color: #1d1d1f; }
+                QLabel#sub   { font-size: 13px; color: #6e6e73; }
+                QListWidget  {
+                    border: 1px solid #d1d1d6; border-radius: 8px;
+                    background: white; font-size: 14px;
+                }
+                QListWidget::item { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; }
+                QListWidget::item:selected { background: #e8f0fb; color: #0071e3; }
+                QListWidget::item:hover    { background: #f5f5f7; }
+                QPushButton#primary {
+                    background: #0071e3; color: white; border: none;
+                    border-radius: 8px; padding: 8px 24px; font-size: 14px;
+                }
+                QPushButton#primary:hover { background: #0077ed; }
+                QPushButton#link {
+                    background: transparent; color: #0071e3; border: none;
+                    font-size: 13px; text-decoration: underline;
+                }
+                QPushButton#link:hover { color: #0077ed; }
+            """)
 
-            screen = QApplication.primaryScreen().availableGeometry()
-            dialog.move(
-                screen.x() + (screen.width() - dialog.width()) // 2,
-                screen.y() + (screen.height() - dialog.height()) // 2,
+            layout = QVBoxLayout(dlg)
+            layout.setContentsMargins(32, 28, 32, 24)
+            layout.setSpacing(12)
+
+            title = QLabel('选择桌面环境')
+            title.setObjectName('title')
+            layout.addWidget(title)
+
+            sub = QLabel('安装完成后将自动配置所选桌面环境。\n不确定选哪个？点击下方链接查看效果预览。')
+            sub.setObjectName('sub')
+            sub.setWordWrap(True)
+            layout.addWidget(sub)
+
+            wiki_btn = QPushButton('查看各桌面环境效果预览 →')
+            wiki_btn.setObjectName('link')
+            wiki_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            wiki_btn.clicked.connect(
+                lambda: QDesktopServices.openUrl(QUrl(self.WIKI_URL))
             )
+            layout.addWidget(wiki_btn)
 
-            root = QVBoxLayout(dialog)
-            root.setContentsMargins(30, 24, 30, 24)
-            root.setSpacing(16)
+            lst = QListWidget()
+            for code, name, desc in self.DESKTOP_OPTIONS:
+                item = QListWidgetItem(f'  {name}\n  {desc}')
+                item.setData(Qt.ItemDataRole.UserRole, code)
+                item.setSizeHint(QSize(0, 52))
+                lst.addItem(item)
+            lst.setCurrentRow(0)
+            lst.itemDoubleClicked.connect(lambda _: dlg.accept())
+            layout.addWidget(lst, stretch=1)
 
-            title = QLabel('请选择桌面环境')
-            font = QFont()
-            font.setPointSize(16)
-            font.setBold(True)
-            title.setFont(font)
-            title.setStyleSheet('color: #1d1d1f;')
-            root.addWidget(title)
+            btn_row = QHBoxLayout()
+            btn_row.addStretch()
+            ok_btn = QPushButton('确认')
+            ok_btn.setObjectName('primary')
+            ok_btn.setFixedHeight(36)
+            ok_btn.clicked.connect(dlg.accept)
+            btn_row.addWidget(ok_btn)
+            layout.addLayout(btn_row)
 
-            self._list_widget = QListWidget()
-            self._list_widget.setStyleSheet("""
-                QListWidget {
-                    border: 1px solid #d1d1d6;
-                    border-radius: 8px;
-                    background: white;
-                    font-size: 14px;
-                }
-                QListWidget::item {
-                    padding: 10px 14px;
-                    border-bottom: 1px solid #f0f0f0;
-                }
-                QListWidget::item:selected {
-                    background: #e8f0fb;
-                    color: #0071e3;
-                }
-                QListWidget::item:hover {
-                    background: #f5f5f7;
-                }
-            """)
+            dlg.exec()
 
-            for code, name in self.DESKTOP_ENVIRONMENTS:
-                item = QListWidgetItem(name)
-                item.setData(Qt.UserRole, code)
-                self._list_widget.addItem(item)
-            self._list_widget.setCurrentRow(0)
-            root.addWidget(self._list_widget, stretch=1)
-
-            btn = QPushButton('确认选择')
-            btn.setStyleSheet("""
-                QPushButton {
-                    background: #0071e3;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    padding: 10px 24px;
-                    font-size: 14px;
-                }
-                QPushButton:hover {
-                    background: #0077ed;
-                }
-            """)
-            btn.clicked.connect(dialog.accept)
-            root.addWidget(btn)
-
-            dialog.setStyleSheet("""
-                QDialog {
-                    background: white;
-                    border-radius: 12px;
-                }
-            """)
-
-            if dialog.exec() == QDialog.Accepted:
-                selected = self._list_widget.currentItem()
-                if selected:
-                    return selected.data(Qt.UserRole)
+            selected = lst.currentItem()
+            if selected:
+                return selected.data(Qt.ItemDataRole.UserRole)
         except Exception:
             pass
-        return 'gnome'
+        return 'none'
