@@ -1,6 +1,11 @@
 import shutil
 import os
 import json
+import sys
+
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 from installer import base_system
 
@@ -108,7 +113,7 @@ class CustomInstaller:
                     border: 1px solid #d1d1d6; border-radius: 8px;
                     background: white; font-size: 14px;
                 }
-                QListWidget::item { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; }
+                QListWidget::item { padding: 6px 14px; border-bottom: 1px solid #f0f0f0; }
                 QListWidget::item:selected { background: #e8f0fb; color: #0071e3; }
                 QListWidget::item:hover    { background: #f5f5f7; }
                 QPushButton#primary {
@@ -144,15 +149,15 @@ class CustomInstaller:
             )
             layout.addWidget(wiki_btn)
 
-            lst = QListWidget()
+            list_widget = QListWidget()
             for code, name, desc in self.DESKTOP_OPTIONS:
                 item = QListWidgetItem(f'  {name}\n  {desc}')
-                item.setData(Qt.ItemDataRole.UserRole, code)
-                item.setSizeHint(QSize(0, 52))
-                lst.addItem(item)
-            lst.setCurrentRow(0)
-            lst.itemDoubleClicked.connect(lambda _: dlg.accept())
-            layout.addWidget(lst, stretch=1)
+                item.setData(Qt.UserRole, code)
+                item.setSizeHint(QSize(0, 64))
+                list_widget.addItem(item)
+            list_widget.setCurrentRow(0)
+            list_widget.itemDoubleClicked.connect(lambda _: dlg.accept())
+            layout.addWidget(list_widget, stretch=1)
 
             btn_row = QHBoxLayout()
             btn_row.addStretch()
@@ -163,11 +168,21 @@ class CustomInstaller:
             btn_row.addWidget(ok_btn)
             layout.addLayout(btn_row)
 
-            dlg.exec()
-
-            selected = lst.currentItem()
-            if selected:
-                return selected.data(Qt.ItemDataRole.UserRole)
-        except Exception:
-            pass
+            result = dlg.exec()
+            if result == QDialog.Accepted:
+                selected_item = list_widget.currentItem()
+                if selected_item:
+                    desktop_code = selected_item.data(Qt.UserRole)
+                    return desktop_code
+        except Exception as e:
+            # 打印异常信息以便调试
+            print(f"GUI选择器错误: {e}")
+            import traceback
+            traceback.print_exc()
         return 'none'
+
+
+if __name__ == '__main__':
+    inst = CustomInstaller()
+    result = inst._pick_desktop()
+    print(f'选择的桌面环境: {result}')
