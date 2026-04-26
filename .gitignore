@@ -10,3 +10,5 @@ build
 cmd_history.txt
 install.log
 *.spec
+dist.tar.xz
+output.iso
