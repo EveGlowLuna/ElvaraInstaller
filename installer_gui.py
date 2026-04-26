@@ -392,7 +392,7 @@ class WelcomePage(QWidget):
         desc = QLabel(
             'ElvaraOS 将引导你安装系统到硬盘中。\n'
             '在开始之前，请确保电脑已经联网。\n'
-            '点击右上角状态栏或直接打开设置可进行联网操作。'
+            '您可以在右下角任务栏或设置中进行联网操作。'
         )
         desc.setObjectName('subtitle')
         desc.setAlignment(Qt.AlignmentFlag.AlignHCenter)
