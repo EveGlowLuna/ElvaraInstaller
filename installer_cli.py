@@ -265,7 +265,10 @@ def main():
 
     # 执行自定义逻辑
     _step('执行自定义脚本...')
-    _load_custom().run('/mnt')
+    custom = _load_custom()
+    if hasattr(custom, 'pre_run'):
+        custom.pre_run()
+    custom.run('/mnt')
 
     _step('卸载文件系统...')
     base_system.umount_all()
@@ -459,7 +462,10 @@ def main_tty():
 
     # Run custom installer logic
     _t_step('Running custom script...')
-    _load_custom().run('/mnt')
+    custom = _load_custom()
+    if hasattr(custom, 'pre_run'):
+        custom.pre_run()
+    custom.run('/mnt')
 
     _t_step('Unmounting filesystems...')
     base_system.umount_all()

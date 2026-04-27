@@ -157,9 +157,10 @@ class InstallWorker(QObject):
     step     = Signal(int, str)
     finished = Signal(bool, str)
 
-    def __init__(self, kwargs: dict):
+    def __init__(self, kwargs: dict, custom=None):
         super().__init__()
         self._kwargs = kwargs
+        self._custom = custom
 
     def run(self) -> None:
         import shutil
@@ -294,7 +295,8 @@ class InstallWorker(QObject):
 
             # 步骤 4：定制脚本（由 custom.py 内部处理）
             self.step.emit(4, INSTALL_STEPS[4][0])
-            _load_custom().run('/mnt')
+            custom = self._custom if self._custom is not None else _load_custom()
+            custom.run('/mnt')
 
             # 步骤 5：引导
             self.step.emit(5, INSTALL_STEPS[5][0])
@@ -1128,7 +1130,12 @@ class InstallerWindow(QMainWindow):
         self._stack.setCurrentWidget(self._install)
         self._install.on_step(0, INSTALL_STEPS[0][0])
 
-        self._worker = InstallWorker(kwargs)
+        # 在主线程调用 pre_run 钩子（如 custom.py 有定义），用于需要 GUI 交互的预处理
+        custom = _load_custom()
+        if hasattr(custom, 'pre_run'):
+            custom.pre_run()
+
+        self._worker = InstallWorker(kwargs, custom)
         self._worker_thread = QThread()
         self._worker.moveToThread(self._worker_thread)
         self._worker_thread.started.connect(self._worker.run)

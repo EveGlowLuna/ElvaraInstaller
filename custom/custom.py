@@ -32,8 +32,12 @@ class CustomInstaller:
         '%E4%B8%80%E9%94%AE%E9%85%8D%E7%BD%AE%E6%A1%8C%E9%9D%A2%E7%8E%AF%E5%A2%83'
     )
 
+    def pre_run(self) -> None:
+        """在主线程中调用，用于需要 GUI 交互的预处理（如桌面环境选择）。"""
+        self._desktop_env = self._pick_desktop()
+
     def run(self, mount_point: str) -> None:
-        desktop_env = self._pick_desktop()
+        desktop_env = getattr(self, '_desktop_env', None) or self._pick_desktop()
 
         shorin_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'shorin-arch-setup')
         shorin_dst = os.path.join(mount_point, 'root', 'shorin-arch-setup')
@@ -90,39 +94,7 @@ class CustomInstaller:
                 print('请输入有效的数字。')
 
     def _pick_desktop_gui(self) -> str:
-        import threading
-        from installer import base_system as _bs
-
-        # 检测是否在主线程，如果是则直接运行（CLI 直接调用场景）
-        try:
-            from PySide6.QtCore import QThread, QCoreApplication
-            in_main_thread = (QThread.currentThread() is QCoreApplication.instance().thread()
-                              if QCoreApplication.instance() else True)
-        except Exception:
-            in_main_thread = True
-
-        if in_main_thread:
-            return self._run_desktop_dialog()
-
-        # 在 worker 线程中：通过 QTimer 把对话框调度到主线程，用 Event 同步等待结果
-        result_holder = [None]
-        done = threading.Event()
-
-        def _show_in_main():
-            try:
-                result_holder[0] = self._run_desktop_dialog()
-            finally:
-                done.set()
-
-        try:
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(0, _show_in_main)
-        except Exception as e:
-            print(f"无法调度到主线程: {e}")
-            return 'none'
-
-        done.wait()
-        return result_holder[0] if result_holder[0] is not None else 'none'
+        return self._run_desktop_dialog()
 
     def _run_desktop_dialog(self) -> str:
         try:
