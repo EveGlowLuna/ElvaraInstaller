@@ -246,6 +246,7 @@ def main():
     base_system.set_passwd('/mnt', username, userpwd)
     base_system.set_passwd('/mnt', 'root', userpwd)
     base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
+    os.chmod('/mnt/etc/sudoers.d/wheel', 0o440)
 
     _step('启用 NetworkManager...')
     base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
@@ -439,6 +440,7 @@ def main_tty():
     base_system.set_passwd('/mnt', username, userpwd)
     base_system.set_passwd('/mnt', 'root', userpwd)
     base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
+    os.chmod('/mnt/etc/sudoers.d/wheel', 0o440)
 
     _t_step('Enabling NetworkManager...')
     base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])

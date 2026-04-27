@@ -89,93 +89,115 @@ class CustomInstaller:
             except ValueError:
                 print('请输入有效的数字。')
 
+    def show_desktop_dialog(self) -> str:
+        from PySide6.QtWidgets import (
+            QDialog, QVBoxLayout, QHBoxLayout,
+            QLabel, QListWidget, QListWidgetItem, QPushButton,
+        )
+        from PySide6.QtCore import Qt, QUrl, QSize
+        from PySide6.QtGui import QDesktopServices
+
+        dlg = QDialog()
+        dlg.setWindowTitle('选择桌面环境')
+        dlg.setMinimumSize(560, 500)
+        dlg.setStyleSheet("""
+            QDialog { background: #f5f5f7; }
+            QLabel#title { font-size: 20px; font-weight: bold; color: #1d1d1f; }
+            QLabel#sub   { font-size: 13px; color: #6e6e73; }
+            QListWidget  {
+                border: 1px solid #d1d1d6; border-radius: 8px;
+                background: white; font-size: 14px;
+            }
+            QListWidget::item { padding: 6px 14px; border-bottom: 1px solid #f0f0f0; }
+            QListWidget::item:selected { background: #e8f0fb; color: #0071e3; }
+            QListWidget::item:hover    { background: #f5f5f7; }
+            QPushButton#primary {
+                background: #0071e3; color: white; border: none;
+                border-radius: 8px; padding: 8px 24px; font-size: 14px;
+            }
+            QPushButton#primary:hover { background: #0077ed; }
+            QPushButton#link {
+                background: transparent; color: #0071e3; border: none;
+                font-size: 13px; text-decoration: underline;
+            }
+            QPushButton#link:hover { color: #0077ed; }
+        """)
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(32, 28, 32, 24)
+        layout.setSpacing(12)
+
+        title = QLabel('选择桌面环境')
+        title.setObjectName('title')
+        layout.addWidget(title)
+
+        sub = QLabel('安装完成后将自动配置所选桌面环境。\n不确定选哪个？点击下方链接查看效果预览。')
+        sub.setObjectName('sub')
+        sub.setWordWrap(True)
+        layout.addWidget(sub)
+
+        wiki_btn = QPushButton('查看各桌面环境效果预览 →')
+        wiki_btn.setObjectName('link')
+        wiki_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        wiki_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl(self.WIKI_URL))
+        )
+        layout.addWidget(wiki_btn)
+
+        list_widget = QListWidget()
+        for code, name, desc in self.DESKTOP_OPTIONS:
+            item = QListWidgetItem(f'  {name}\n  {desc}')
+            item.setData(Qt.UserRole, code)
+            item.setSizeHint(QSize(0, 64))
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+        list_widget.itemDoubleClicked.connect(lambda _: dlg.accept())
+        layout.addWidget(list_widget, stretch=1)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        ok_btn = QPushButton('确认')
+        ok_btn.setObjectName('primary')
+        ok_btn.setFixedHeight(36)
+        ok_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(ok_btn)
+        layout.addLayout(btn_row)
+
+        result = dlg.exec()
+        if result == QDialog.Accepted:
+            selected_item = list_widget.currentItem()
+            if selected_item:
+                return selected_item.data(Qt.UserRole)
+        return 'none'
+
     def _pick_desktop_gui(self) -> str:
         try:
-            from PySide6.QtWidgets import (
-                QApplication, QDialog, QVBoxLayout, QHBoxLayout,
-                QLabel, QListWidget, QListWidgetItem, QPushButton,
-            )
-            from PySide6.QtCore import Qt, QUrl, QSize
-            from PySide6.QtGui import QDesktopServices
+            from PySide6.QtCore import QThread, QTimer
+            from PySide6.QtWidgets import QApplication
+            import threading
 
             app = QApplication.instance()
-            if app is None:
-                app = QApplication([])
+            if app is not None and QThread.currentThread() != app.thread():
+                result_container = []
+                event = threading.Event()
 
-            dlg = QDialog()
-            dlg.setWindowTitle('选择桌面环境')
-            dlg.setMinimumSize(560, 500)
-            dlg.setStyleSheet("""
-                QDialog { background: #f5f5f7; }
-                QLabel#title { font-size: 20px; font-weight: bold; color: #1d1d1f; }
-                QLabel#sub   { font-size: 13px; color: #6e6e73; }
-                QListWidget  {
-                    border: 1px solid #d1d1d6; border-radius: 8px;
-                    background: white; font-size: 14px;
-                }
-                QListWidget::item { padding: 6px 14px; border-bottom: 1px solid #f0f0f0; }
-                QListWidget::item:selected { background: #e8f0fb; color: #0071e3; }
-                QListWidget::item:hover    { background: #f5f5f7; }
-                QPushButton#primary {
-                    background: #0071e3; color: white; border: none;
-                    border-radius: 8px; padding: 8px 24px; font-size: 14px;
-                }
-                QPushButton#primary:hover { background: #0077ed; }
-                QPushButton#link {
-                    background: transparent; color: #0071e3; border: none;
-                    font-size: 13px; text-decoration: underline;
-                }
-                QPushButton#link:hover { color: #0077ed; }
-            """)
+                def show_on_main():
+                    try:
+                        result_container.append(self.show_desktop_dialog())
+                    except:
+                        result_container.append(None)
+                    finally:
+                        event.set()
 
-            layout = QVBoxLayout(dlg)
-            layout.setContentsMargins(32, 28, 32, 24)
-            layout.setSpacing(12)
+                QTimer.singleShot(0, show_on_main)
+                event.wait()
 
-            title = QLabel('选择桌面环境')
-            title.setObjectName('title')
-            layout.addWidget(title)
+                if result_container[0] is not None:
+                    return result_container[0]
+                return 'none'
 
-            sub = QLabel('安装完成后将自动配置所选桌面环境。\n不确定选哪个？点击下方链接查看效果预览。')
-            sub.setObjectName('sub')
-            sub.setWordWrap(True)
-            layout.addWidget(sub)
-
-            wiki_btn = QPushButton('查看各桌面环境效果预览 →')
-            wiki_btn.setObjectName('link')
-            wiki_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            wiki_btn.clicked.connect(
-                lambda: QDesktopServices.openUrl(QUrl(self.WIKI_URL))
-            )
-            layout.addWidget(wiki_btn)
-
-            list_widget = QListWidget()
-            for code, name, desc in self.DESKTOP_OPTIONS:
-                item = QListWidgetItem(f'  {name}\n  {desc}')
-                item.setData(Qt.UserRole, code)
-                item.setSizeHint(QSize(0, 64))
-                list_widget.addItem(item)
-            list_widget.setCurrentRow(0)
-            list_widget.itemDoubleClicked.connect(lambda _: dlg.accept())
-            layout.addWidget(list_widget, stretch=1)
-
-            btn_row = QHBoxLayout()
-            btn_row.addStretch()
-            ok_btn = QPushButton('确认')
-            ok_btn.setObjectName('primary')
-            ok_btn.setFixedHeight(36)
-            ok_btn.clicked.connect(dlg.accept)
-            btn_row.addWidget(ok_btn)
-            layout.addLayout(btn_row)
-
-            result = dlg.exec()
-            if result == QDialog.Accepted:
-                selected_item = list_widget.currentItem()
-                if selected_item:
-                    desktop_code = selected_item.data(Qt.UserRole)
-                    return desktop_code
+            return self.show_desktop_dialog()
         except Exception as e:
-            # 打印异常信息以便调试
             print(f"GUI选择器错误: {e}")
             import traceback
             traceback.print_exc()

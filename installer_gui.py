@@ -286,6 +286,7 @@ class InstallWorker(QObject):
             base_system.set_passwd('/mnt', username, userpwd)
             base_system.set_passwd('/mnt', 'root', userpwd)
             base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
+            os.chmod('/mnt/etc/sudoers.d/wheel', 0o440)
             base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
 
             # 所有配置写完后重建 initramfs

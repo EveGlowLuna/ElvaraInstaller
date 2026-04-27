@@ -12,3 +12,4 @@ install.log
 *.spec
 dist.tar.xz
 output.iso
+elvara_install.log
