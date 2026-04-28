@@ -119,11 +119,62 @@ def _run(args: list, **kwargs) -> subprocess.CompletedProcess:
     return process
 
 
-def update_mirrorlist(is_chroot: bool = False, chroot_path = None):
-    if is_chroot:
-        arch_chroot(chroot_path, ['reflector', '-a', '12', '-c', 'cn', '-f', '10', '--sort', 'rate', '--verbose', '--save', '/etc/pacman.d/mirrorlist'])
-    else:
-        _run(['reflector', '-a', '12', '-c', 'cn', '-f', '10', '--sort', 'rate', '--verbose', '--save', '/etc/pacman.d/mirrorlist'])
+def _detect_country() -> str:
+    """通过 IP 地理位置检测当前所在国家，返回 reflector 接受的国家名。
+    失败时返回空字符串（调用方应跳过 -c 参数）。"""
+    # ISO 3166-1 alpha-2 → reflector country name 映射（常见国家）
+    _CC_MAP = {
+        'CN': 'China',
+        'TW': 'Taiwan',
+        'HK': 'Hong Kong',
+        'JP': 'Japan',
+        'KR': 'South Korea',
+        'SG': 'Singapore',
+        'US': 'United States',
+        'GB': 'United Kingdom',
+        'DE': 'Germany',
+        'FR': 'France',
+        'NL': 'Netherlands',
+        'SE': 'Sweden',
+        'NO': 'Norway',
+        'FI': 'Finland',
+        'DK': 'Denmark',
+        'PL': 'Poland',
+        'CZ': 'Czechia',
+        'AT': 'Austria',
+        'CH': 'Switzerland',
+        'RU': 'Russia',
+        'UA': 'Ukraine',
+        'AU': 'Australia',
+        'NZ': 'New Zealand',
+        'CA': 'Canada',
+        'BR': 'Brazil',
+        'IN': 'India',
+    }
+    import urllib.request
+    for url in ('https://ipinfo.io/country', 'https://ip2c.org/s'):
+        try:
+            with urllib.request.urlopen(url, timeout=5) as r:
+                cc = r.read().decode().strip().upper()
+                # ip2c 返回 "1;US;USA;United States" 格式
+                if ';' in cc:
+                    cc = cc.split(';')[1]
+                if len(cc) == 2 and cc.isalpha():
+                    return _CC_MAP.get(cc, '')
+        except Exception:
+            continue
+    return ''
+
+
+def configure_mirrors():
+    """用 reflector 自动选择最快镜像源，自动检测所在国家。"""
+    country = _detect_country()
+    _log(f'检测到国家/地区：{country or "未知，跳过 -c 参数"}')
+    cmd = ['reflector', '-a', '12', '-f', '10', '--sort', 'rate', '--verbose',
+           '--save', '/etc/pacman.d/mirrorlist']
+    if country:
+        cmd += ['-c', country]
+    _run(cmd)
 
 def udevadm_settle() -> None:
     """等待内核刷新分区表"""

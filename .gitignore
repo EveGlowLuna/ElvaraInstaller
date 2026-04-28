@@ -10,6 +10,6 @@ build
 cmd_history.txt
 install.log
 *.spec
-dist.tar.xz
+dist.*
 output.iso
 elvara_install.log

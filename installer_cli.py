@@ -225,7 +225,8 @@ def main():
     disk.mount_disk(disk_root, disk_efi)
 
     _step('安装基础系统（可能需要较长时间）...')
-    base_system.update_mirrorlist()
+    if _ask('配置国内镜像源？（y/n）').lower() == 'y':
+        base_system.configure_mirrors()
     base_system.install_base('/mnt')
     base_system.generate_fstab('/mnt')
 
@@ -422,7 +423,8 @@ def main_tty():
     disk.mount_disk(disk_root, disk_efi)
 
     _t_step('Installing base system (this may take a while)...')
-    base_system.update_mirrorlist()
+    if _t_ask('Configure Chinese mirrors? (y/n)').lower() == 'y':
+        base_system.configure_mirrors()
     base_system.install_base('/mnt')
     base_system.generate_fstab('/mnt')
 
