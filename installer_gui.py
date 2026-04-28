@@ -37,6 +37,9 @@ def _infer_disk_model(name: str) -> str:
     return 'Unknown'
 
 
+_INSTALL_BLACKLIST = ('loop', 'zram', 'sr', 'fd', 'ram')
+
+
 def _load_custom():
     """加载 custom/custom.py 并返回 CustomInstaller 实例。"""
     # 打包后用可执行文件所在目录，未打包用脚本所在目录
@@ -413,7 +416,8 @@ class WelcomePage(QWidget):
 
         desc = QLabel(
             'ElvaraOS 将引导你安装系统到硬盘中。\n'
-            '在开始之前，请确保电脑已经联网。\n'
+            '在开始之前，请确保电脑已经联网且网络畅通。\n'
+            '网络不好或将导致安装失败。\n'
             '您可以在右下角任务栏或设置中进行联网操作。'
         )
         desc.setObjectName('subtitle')
@@ -499,9 +503,14 @@ class DiskPage(QWidget):
         self._list.blockSignals(True)
         self._list.clear()
         try:
-            self._devices = disk.get_disk_data()['blockdevices']
+            all_devs = disk.get_disk_data()['blockdevices']
         except Exception:
-            self._devices = []
+            all_devs = []
+        # 过滤掉 loop、zram、光驱等不可安装目标
+        self._devices = [
+            d for d in all_devs
+            if not d.get('name', '').startswith(_INSTALL_BLACKLIST)
+        ]
         for dev in self._devices:
             model = dev.get('model') or _infer_disk_model(dev.get('name', ''))
             size  = dev.get('size', '')

@@ -3,7 +3,7 @@
 sed -i 's/#ParallelDownloads/ParallelDownloads/' /etc/pacman.conf
 sed -i 's/#Color/Color/' /etc/pacman.conf
 
-reflector --country China --latest 10 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
+reflector --latest 10 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
 
 mkdir -p /build/go-cache
 chmod 777 /build/go-cache

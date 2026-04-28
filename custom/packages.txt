@@ -18,3 +18,5 @@ git
 dotnet-sdk
 go
 reflector
+gnome-backgrounds
+zsh
