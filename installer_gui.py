@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QMainWindow, QStackedWidget,
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QLineEdit, QComboBox,
-    QFormLayout, QTextEdit, QProgressBar,
+    QCheckBox, QFormLayout, QTextEdit, QProgressBar,
     QMessageBox, QSizePolicy,
     QFrame,
 )
@@ -19,6 +19,23 @@ from installer.log import setup_gui_logging
 import importlib.util
 import sys
 import os
+
+def _infer_disk_model(name: str) -> str:
+    """当 lsblk/udev 无法提供 model 时，根据设备名推断友好名称。"""
+    if name.startswith('zram'):
+        return 'ZRAM (压缩内存)'
+    if name.startswith('vd'):
+        return 'VirtIO 磁盘'
+    if name.startswith('nvme'):
+        return 'NVMe SSD'
+    if name.startswith('mmcblk'):
+        return 'eMMC / SD 卡'
+    if name.startswith('sr'):
+        return '光驱'
+    if name.startswith('loop'):
+        return 'Loop 设备'
+    return 'Unknown'
+
 
 def _load_custom():
     """加载 custom/custom.py 并返回 CustomInstaller 实例。"""
@@ -269,6 +286,8 @@ class InstallWorker(QObject):
 
             # 步骤 2：安装基础系统
             self.step.emit(2, INSTALL_STEPS[2][0])
+            if kw.get('configure_mirrors', False):
+                base_system.configure_mirrors()
             base_system.install_base('/mnt')
             base_system.generate_fstab('/mnt')
 
@@ -287,6 +306,7 @@ class InstallWorker(QObject):
             base_system.set_passwd('/mnt', username, userpwd)
             base_system.set_passwd('/mnt', 'root', userpwd)
             base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
+            os.chmod('/mnt/etc/sudoers.d/wheel', 0o440)
             base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
 
             # 所有配置写完后重建 initramfs
@@ -294,8 +314,10 @@ class InstallWorker(QObject):
 
             # 步骤 4：定制脚本（由 custom.py 内部处理）
             self.step.emit(4, INSTALL_STEPS[4][0])
+            custom = self._custom if self._custom is not None else _load_custom()
+            custom.run('/mnt')
 
-            # 步骤 5：引导（先装 grub，再跑 custom，grub 是核心不能被 custom 失败影响）
+            # 步骤 5：引导
             self.step.emit(5, INSTALL_STEPS[5][0])
             if boot_mode == 'boot':
                 base_system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', kw['raw_disk']])
@@ -304,9 +326,6 @@ class InstallWorker(QObject):
                 base_system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
             
             base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
-
-            custom = self._custom if self._custom is not None else _load_custom()
-            custom.run('/mnt')
 
             base_system.umount_all()
             self.step.emit(6, INSTALL_STEPS[6][0])
@@ -395,7 +414,7 @@ class WelcomePage(QWidget):
         desc = QLabel(
             'ElvaraOS 将引导你安装系统到硬盘中。\n'
             '在开始之前，请确保电脑已经联网。\n'
-            '点击右上角状态栏或直接打开设置可进行联网操作。'
+            '您可以在右下角任务栏或设置中进行联网操作。'
         )
         desc.setObjectName('subtitle')
         desc.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -484,7 +503,7 @@ class DiskPage(QWidget):
         except Exception:
             self._devices = []
         for dev in self._devices:
-            model = dev.get('model') or 'Unknown'
+            model = dev.get('model') or _infer_disk_model(dev.get('name', ''))
             size  = dev.get('size', '')
             path  = f'/dev/{dev["name"]}'
             item  = QListWidgetItem(f'  {model}\n  {size}  ·  {path}')
@@ -709,6 +728,10 @@ class SystemPage(QWidget):
         form.addRow('设备名称：', self._hostname_edit)
 
         root.addLayout(form)
+        root.addSpacing(8)
+        self._mirror_check = QCheckBox('配置国内镜像源（reflector）')
+        self._mirror_check.setChecked(True)
+        root.addWidget(self._mirror_check)
         root.addStretch()
         root.addWidget(_divider())
         root.addSpacing(8)
@@ -734,6 +757,7 @@ class SystemPage(QWidget):
             'timezone': self._tz_combo.currentText(),
             'kb_layout': self._kb_combo.currentData(),
             'hostname': self._hostname_edit.text().strip(),
+            'configure_mirrors': self._mirror_check.isChecked(),
         }
 
 
@@ -853,11 +877,13 @@ class ConfirmPage(QWidget):
         root.addLayout(btn_row)
 
     def update_summary(self, disk_info: str, system_info: dict, username: str) -> None:
+        mirror_text = '是' if system_info.get('configure_mirrors', False) else '否'
         text = (
             f'<b>安装位置</b><br>{disk_info}<br><br>'
             f'<b>时区</b><br>{system_info.get("timezone", "")}<br><br>'
             f'<b>键盘布局</b><br>{system_info.get("kb_layout", "")}<br><br>'
             f'<b>设备名称</b><br>{system_info.get("hostname", "")}<br><br>'
+            f'<b>配置国内镜像源</b><br>{mirror_text}<br><br>'
             f'<b>用户名</b><br>{username}<br>'
         )
         self._summary.setText(text)
@@ -1124,6 +1150,7 @@ class InstallerWindow(QMainWindow):
             hostname      = sys_cfg['hostname'],
             timezone      = sys_cfg['timezone'],
             kb_layout     = sys_cfg['kb_layout'],
+            configure_mirrors = sys_cfg['configure_mirrors'],
         )
 
         self._install.set_destination(s['raw_disk'])

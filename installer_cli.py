@@ -7,8 +7,7 @@ import os
 
 
 def _load_custom():
-    """加载 custom/custom.py 并返回 CustomInstaller 实例。"""
-    # 打包后用可执行文件所在目录，未打包用脚本所在目录
+    # 打包后用可执行文件所在目录，未打包则用脚本所在目录
     if getattr(sys, 'frozen', False):
         base = os.path.dirname(sys.executable)
     else:
@@ -226,7 +225,8 @@ def main():
     disk.mount_disk(disk_root, disk_efi)
 
     _step('安装基础系统（可能需要较长时间）...')
-    base_system.update_mirrorlist()
+    if _ask('配置国内镜像源？（y/n）').lower() == 'y':
+        base_system.configure_mirrors()
     base_system.install_base('/mnt')
     base_system.generate_fstab('/mnt')
 
@@ -247,6 +247,7 @@ def main():
     base_system.set_passwd('/mnt', username, userpwd)
     base_system.set_passwd('/mnt', 'root', userpwd)
     base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
+    os.chmod('/mnt/etc/sudoers.d/wheel', 0o440)
 
     _step('启用 NetworkManager...')
     base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
@@ -422,7 +423,8 @@ def main_tty():
     disk.mount_disk(disk_root, disk_efi)
 
     _t_step('Installing base system (this may take a while)...')
-    base_system.update_mirrorlist()
+    if _t_ask('Configure Chinese mirrors? (y/n)').lower() == 'y':
+        base_system.configure_mirrors()
     base_system.install_base('/mnt')
     base_system.generate_fstab('/mnt')
 
@@ -443,6 +445,7 @@ def main_tty():
     base_system.set_passwd('/mnt', username, userpwd)
     base_system.set_passwd('/mnt', 'root', userpwd)
     base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
+    os.chmod('/mnt/etc/sudoers.d/wheel', 0o440)
 
     _t_step('Enabling NetworkManager...')
     base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
