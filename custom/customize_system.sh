@@ -32,6 +32,7 @@ username=$(find /home -maxdepth 1 -mindepth 1 -type d -printf "%f\n" -quit)
 target_dir="/home/${username}/.local/"
 mkdir -p "$target_dir"
 cp -a etc/skel/.local/ "$target_dir"
+chown -R "${username}:${username}" "/home/${username}"
 
 rm /etc/os-release
 cp etc/os-release /etc/os-release

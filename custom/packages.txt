@@ -20,3 +20,4 @@ go
 reflector
 gnome-backgrounds
 zsh
+fish

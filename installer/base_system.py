@@ -262,9 +262,9 @@ def arch_chroot(mount_point: str, system: list[str], out: str = '', out_mode: st
 
 
 def create_user(mount_point: str, username: str) -> None:
-    """创建普通用户并加入 wheel 组，使用 zsh"""
+    """创建普通用户并加入 wheel 组，使用 fish"""
     arch_chroot(mount_point, [
-        'useradd', '-m', '-G', 'wheel', '-s', '/bin/zsh', username
+        'useradd', '-m', '-G', 'wheel', '-s', '/usr/bin/fish', username
     ])
 
 
