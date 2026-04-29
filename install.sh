@@ -28,7 +28,7 @@ TEMP_DIR=$(mktemp -d)
 cd "$TEMP_DIR"
 if command -v git &> /dev/null; then
     echo -e "${CYAN}Cloning repository with git...${NC}"
-    git clone --depth 1 -b "$BRANCH" "$REPO_URL" repo
+    git clone -b "$BRANCH" "$REPO_URL" repo
 else
     echo -e "${YELLOW}Git not found. Falling back to curl download...${NC}"
     curl -L "$TAR_URL" -o repo.tar.gz
@@ -37,6 +37,10 @@ else
 fi
 
 cd repo
+if command -v git &> /dev/null; then
+    echo -e "${CYAN}Switching to dev_custom branch...${NC}"
+    git checkout dev_custom
+fi
 echo -e "${GREEN}Starting installer...${NC}"
 python3 main.py
 
