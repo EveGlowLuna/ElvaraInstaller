@@ -34,3 +34,4 @@ pip install -r requirements.txt
 
 - 修改 `custom/custom.py` 中的 `CustomInstaller.run()` 方法实现自定义安装逻辑
 - 在 `custom/packages.txt` 中添加需要安装的包（每行一个）
+- 有关 `custom.py` 的更多信息请查看custom/docs.md
