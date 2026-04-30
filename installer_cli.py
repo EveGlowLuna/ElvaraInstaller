@@ -1,4 +1,4 @@
-from installer import disk, base_system, efi
+from installer import disk, system, efi
 import shutil
 import importlib.util
 import subprocess

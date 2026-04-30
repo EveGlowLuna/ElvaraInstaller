@@ -1,7 +1,7 @@
 """ElvaraOS 安装程序入口"""
 import os
 import sys
-from installer import base_system
+from installer import system
 
 
 def _reexec_as_root() -> None:
