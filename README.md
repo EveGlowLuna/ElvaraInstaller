@@ -16,7 +16,7 @@ curl -fsSL https://elvaraos-install.eveglowsite.top/ | bash
 
 ## 作为模板使用
 
-1. 克隆本仓库
+1. 点击`Use this template`创建属于自己的仓库
 2. 修改 `custom/` 目录下的文件：
    - `custom.py`：编写自定义安装逻辑
    - `packages.txt`：添加需要的包
