@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QFrame,
 )
 
-from installer import disk, base_system, efi
+from installer import disk, system, efi
 from installer.log import setup_gui_logging
 import importlib.util
 import sys

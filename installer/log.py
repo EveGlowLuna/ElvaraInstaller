@@ -26,7 +26,7 @@ def setup_gui_logging(callback: Callable[[str], None]) -> None:
     _callback = callback
     _redirect_stdout(callback)
     # 同步给 base_system 和 disk 的日志回调
-    from installer import base_system, disk
+    from installer import system, disk
     base_system.set_log_callback(callback)
     disk.set_log_callback(callback)
 
