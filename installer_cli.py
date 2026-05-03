@@ -164,14 +164,14 @@ def main():
         disk.create_label(raw_disk, boot_mode)
         if boot_mode == 'boot':
             disk.create_part(raw_disk, 'primary', '1MiB', '100%', is_boot=True, part_num=1)
-            base_system.udevadm_settle()
+            system.udevadm_settle()
             disk_root = disk.get_partition_path(raw_disk, 1)
             disk_efi  = None
             disk.create_filesystem(disk_root, 'ext4')
         else:
             disk.create_part(raw_disk, 'primary', '1MiB', '513MiB', fs_type='fat32')
             disk.create_part(raw_disk, 'primary', '513MiB', '100%')
-            base_system.udevadm_settle()
+            system.udevadm_settle()
             disk_efi  = disk.get_partition_path(raw_disk, 1)
             disk_root = disk.get_partition_path(raw_disk, 2)
             subprocess.run(['sudo', 'parted', '-s', raw_disk, 'set', '1', 'esp', 'on'], check=True)
@@ -193,7 +193,7 @@ def main():
         disk.create_part(raw_disk, 'primary', last_end, efi_end, fs_type='fat32')
         disk.create_part(raw_disk, 'primary', efi_end, '100%')
         subprocess.run(['sudo', 'parted', '-s', raw_disk, 'set', str(efi_num), 'esp', 'on'], check=True)
-        base_system.udevadm_settle()
+        system.udevadm_settle()
         disk_efi  = disk.get_partition_path(raw_disk, efi_num)
         disk_root = disk.get_partition_path(raw_disk, root_num)
         disk.create_filesystem(disk_efi, 'fat')
@@ -226,43 +226,43 @@ def main():
 
     _step('安装基础系统（可能需要较长时间）...')
     if _ask('配置国内镜像源？（y/n）').lower() == 'y':
-        base_system.configure_mirrors()
-    base_system.install_base('/mnt')
-    base_system.generate_fstab('/mnt')
+        system.configure_mirrors()
+    system.install_base('/mnt')
+    system.generate_fstab('/mnt')
 
     # 配置 locale、时区、主机名、键盘布局
     _step('配置系统区域设置...')
-    base_system.write_file('/mnt', '/etc/locale.gen', 'zh_CN.UTF-8 UTF-8\n', 'a')
-    base_system.arch_chroot('/mnt', ['locale-gen'])
-    base_system.write_file('/mnt', '/etc/locale.conf', 'LANG=zh_CN.UTF-8\n')
-    base_system.arch_chroot('/mnt', ['ln', '-sf', f'/usr/share/zoneinfo/{timezone}', '/etc/localtime'])
-    base_system.write_file('/mnt', '/etc/hostname', f'{uhost}\n')
-    base_system.write_file('/mnt', '/etc/hosts',
+    system.write_file('/mnt', '/etc/locale.gen', 'zh_CN.UTF-8 UTF-8\n', 'a')
+    system.arch_chroot('/mnt', ['locale-gen'])
+    system.write_file('/mnt', '/etc/locale.conf', 'LANG=zh_CN.UTF-8\n')
+    system.arch_chroot('/mnt', ['ln', '-sf', f'/usr/share/zoneinfo/{timezone}', '/etc/localtime'])
+    system.write_file('/mnt', '/etc/hostname', f'{uhost}\n')
+    system.write_file('/mnt', '/etc/hosts',
         f'127.0.0.1   localhost\n::1         localhost\n127.0.1.1   {uhost}.localdomain   {uhost}\n')
-    base_system.write_file('/mnt', '/etc/vconsole.conf', f'KEYMAP={kb_layout}\n')
+    system.write_file('/mnt', '/etc/vconsole.conf', f'KEYMAP={kb_layout}\n')
 
     # 创建用户并设置密码和 sudo 权限
     _step('创建用户账户...')
-    base_system.create_user('/mnt', username)
-    base_system.set_passwd('/mnt', username, userpwd)
-    base_system.set_passwd('/mnt', 'root', userpwd)
-    base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
+    system.create_user('/mnt', username)
+    system.set_passwd('/mnt', username, userpwd)
+    system.set_passwd('/mnt', 'root', userpwd)
+    system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
     os.chmod('/mnt/etc/sudoers.d/wheel', 0o440)
 
     _step('启用 NetworkManager...')
-    base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
+    system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
 
     _step('重建 initramfs...')
-    base_system.arch_chroot('/mnt', ['mkinitcpio', '-P'])
+    system.arch_chroot('/mnt', ['mkinitcpio', '-P'])
 
     # 安装 GRUB，BIOS 和 UEFI 参数不同
     _step('安装引导程序（GRUB）...')
     if boot_mode == 'boot':
-        base_system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', raw_disk])
+        system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', raw_disk])
     else:
         target = '--target=x86_64-efi' if boot_mode == 'uefi' else '--target=i386-efi'
-        base_system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
-    base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
+        system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
+    system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
 
     # 执行自定义逻辑
     _step('执行自定义脚本...')
@@ -272,7 +272,7 @@ def main():
     custom.run('/mnt')
 
     _step('卸载文件系统...')
-    base_system.umount_all()
+    system.umount_all()
 
     _header('安装完成')
     _info('现在可以重启系统了。')
@@ -362,14 +362,14 @@ def main_tty():
         disk.create_label(raw_disk, boot_mode)
         if boot_mode == 'boot':
             disk.create_part(raw_disk, 'primary', '1MiB', '100%', is_boot=True, part_num=1)
-            base_system.udevadm_settle()
+            system.udevadm_settle()
             disk_root = disk.get_partition_path(raw_disk, 1)
             disk_efi  = None
             disk.create_filesystem(disk_root, 'ext4')
         else:
             disk.create_part(raw_disk, 'primary', '1MiB', '513MiB', fs_type='fat32')
             disk.create_part(raw_disk, 'primary', '513MiB', '100%')
-            base_system.udevadm_settle()
+            system.udevadm_settle()
             disk_efi  = disk.get_partition_path(raw_disk, 1)
             disk_root = disk.get_partition_path(raw_disk, 2)
             subprocess.run(['sudo', 'parted', '-s', raw_disk, 'set', '1', 'esp', 'on'], check=True)
@@ -391,7 +391,7 @@ def main_tty():
         disk.create_part(raw_disk, 'primary', last_end, efi_end, fs_type='fat32')
         disk.create_part(raw_disk, 'primary', efi_end, '100%')
         subprocess.run(['sudo', 'parted', '-s', raw_disk, 'set', str(efi_num), 'esp', 'on'], check=True)
-        base_system.udevadm_settle()
+        system.udevadm_settle()
         disk_efi  = disk.get_partition_path(raw_disk, efi_num)
         disk_root = disk.get_partition_path(raw_disk, root_num)
         disk.create_filesystem(disk_efi, 'fat')
@@ -424,43 +424,43 @@ def main_tty():
 
     _t_step('Installing base system (this may take a while)...')
     if _t_ask('Configure Chinese mirrors? (y/n)').lower() == 'y':
-        base_system.configure_mirrors()
-    base_system.install_base('/mnt')
-    base_system.generate_fstab('/mnt')
+        system.configure_mirrors()
+    system.install_base('/mnt')
+    system.generate_fstab('/mnt')
 
     # Configure locale, timezone, hostname, keyboard
     _t_step('Configuring locale...')
-    base_system.write_file('/mnt', '/etc/locale.gen', 'zh_CN.UTF-8 UTF-8\n', 'a')
-    base_system.arch_chroot('/mnt', ['locale-gen'])
-    base_system.write_file('/mnt', '/etc/locale.conf', 'LANG=zh_CN.UTF-8\n')
-    base_system.arch_chroot('/mnt', ['ln', '-sf', f'/usr/share/zoneinfo/{timezone}', '/etc/localtime'])
-    base_system.write_file('/mnt', '/etc/hostname', f'{uhost}\n')
-    base_system.write_file('/mnt', '/etc/hosts',
+    system.write_file('/mnt', '/etc/locale.gen', 'zh_CN.UTF-8 UTF-8\n', 'a')
+    system.arch_chroot('/mnt', ['locale-gen'])
+    system.write_file('/mnt', '/etc/locale.conf', 'LANG=zh_CN.UTF-8\n')
+    system.arch_chroot('/mnt', ['ln', '-sf', f'/usr/share/zoneinfo/{timezone}', '/etc/localtime'])
+    system.write_file('/mnt', '/etc/hostname', f'{uhost}\n')
+    system.write_file('/mnt', '/etc/hosts',
         f'127.0.0.1   localhost\n::1         localhost\n127.0.1.1   {uhost}.localdomain   {uhost}\n')
-    base_system.write_file('/mnt', '/etc/vconsole.conf', f'KEYMAP={kb_layout}\n')
+    system.write_file('/mnt', '/etc/vconsole.conf', f'KEYMAP={kb_layout}\n')
 
     # Create user, set passwords and sudo
     _t_step('Creating user account...')
-    base_system.create_user('/mnt', username)
-    base_system.set_passwd('/mnt', username, userpwd)
-    base_system.set_passwd('/mnt', 'root', userpwd)
-    base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
+    system.create_user('/mnt', username)
+    system.set_passwd('/mnt', username, userpwd)
+    system.set_passwd('/mnt', 'root', userpwd)
+    system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
     os.chmod('/mnt/etc/sudoers.d/wheel', 0o440)
 
     _t_step('Enabling NetworkManager...')
-    base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
+    system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
 
     _t_step('Rebuilding initramfs...')
-    base_system.arch_chroot('/mnt', ['mkinitcpio', '-P'])
+    system.arch_chroot('/mnt', ['mkinitcpio', '-P'])
 
     # Install GRUB, different targets for BIOS and UEFI
     _t_step('Installing bootloader (GRUB)...')
     if boot_mode == 'boot':
-        base_system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', raw_disk])
+        system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', raw_disk])
     else:
         target = '--target=x86_64-efi' if boot_mode == 'uefi' else '--target=i386-efi'
-        base_system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
-    base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
+        system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
+    system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
 
     # Run custom installer logic
     _t_step('Running custom script...')
@@ -470,14 +470,14 @@ def main_tty():
     custom.run('/mnt')
 
     _t_step('Unmounting filesystems...')
-    base_system.umount_all()
+    system.umount_all()
 
     _t_header('Installation Complete')
     _t_info('You may now reboot.')
 
 
 if __name__ == '__main__':
-    if base_system.is_linux_tty_or_non_desktop():
+    if system.is_linux_tty_or_non_desktop():
         main_tty()
     else:
         main()

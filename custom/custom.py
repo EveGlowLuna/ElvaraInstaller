@@ -61,9 +61,9 @@ class CustomInstaller:
         customize_sh = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'customize_system.sh')
         customize_dst = os.path.join(mount_point, 'root', 'customize_system.sh')
         shutil.copy(customize_sh, customize_dst)
-        base_system.arch_chroot(mount_point, ['bash', '/root/customize_system.sh'])
+        system.arch_chroot(mount_point, ['bash', '/root/customize_system.sh'])
 
-        base_system.arch_chroot(mount_point, ['bash', '/root/shorin-arch-setup/install.sh'])
+        system.arch_chroot(mount_point, ['bash', '/root/shorin-arch-setup/install.sh'])
 
         shutil.rmtree(shorin_dst, ignore_errors=True)
         for f in [config_path,
@@ -75,7 +75,7 @@ class CustomInstaller:
                 pass
 
     def _pick_desktop(self) -> str:
-        if base_system.is_linux_tty_or_non_desktop():
+        if system.is_linux_tty_or_non_desktop():
             return self._pick_desktop_tty()
         else:
             return self._pick_desktop_gui()

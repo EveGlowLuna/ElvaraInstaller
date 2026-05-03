@@ -25,7 +25,7 @@ def _reexec_as_root() -> None:
 def main() -> None:
     _reexec_as_root()
 
-    if '--cli' in sys.argv or base_system.is_linux_tty_or_non_desktop():
+    if '--cli' in sys.argv or system.is_linux_tty_or_non_desktop():
         from installer_cli import main as cli_main
         cli_main()
     else:
