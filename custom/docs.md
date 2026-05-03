@@ -71,8 +71,8 @@ import os
 class CustomInstaller:
     def pre_run(self):
         """在主线程弹出选择对话框。"""
-        from installer import base_system
-        if base_system.is_linux_tty_or_non_desktop():
+        from installer import system
+        if system.is_linux_tty_or_non_desktop():
             self._choice = input('请输入选项: ').strip()
         else:
             self._choice = self._show_dialog()
@@ -93,4 +93,4 @@ class CustomInstaller:
 - `run()` 在 GUI 模式下运行于 **worker 线程**，严禁在此创建或操作任何 `QWidget` / `QDialog`，否则会导致随机崩溃
 - 需要 GUI 交互的逻辑一律放在 `pre_run()` 中
 - `pre_run()` 是可选的，不需要 GUI 交互时无需实现
-- 可以使用 `installer.base_system.arch_chroot(mount_point, [...])` 在目标系统内执行命令
+- 可以使用 `installer.system.arch_chroot(mount_point, [...])` 在目标系统内执行命令

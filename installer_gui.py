@@ -217,7 +217,7 @@ class InstallWorker(QObject):
                 disk.create_label(raw_disk, boot_mode)
                 if boot_mode == 'boot':
                     disk.create_part(raw_disk, 'primary', '1MiB', '100%', is_boot=True, part_num=1)
-                    base_system.udevadm_settle()
+                    system.udevadm_settle()
                     disk_root = disk.get_partition_path(raw_disk, 1)
                     disk_efi = None
                     disk.create_filesystem(disk_root, 'ext4')
@@ -226,7 +226,7 @@ class InstallWorker(QObject):
                     end_size = '100%' if part_size_gib is None else f'{part_size_gib}GiB'
                     disk.create_part(raw_disk, 'primary', '1MiB', '513MiB', fs_type='fat32')
                     disk.create_part(raw_disk, 'primary', '513MiB', end_size)
-                    base_system.udevadm_settle()
+                    system.udevadm_settle()
                     disk_efi  = disk.get_partition_path(raw_disk, 1)
                     disk_root = disk.get_partition_path(raw_disk, 2)
                     _sp.run(['sudo', 'parted', '-s', raw_disk, 'set', '1', 'esp', 'on'], check=True)
@@ -252,7 +252,7 @@ class InstallWorker(QObject):
                 disk.create_part(raw_disk, 'primary', last_end, efi_end, fs_type='fat32')
                 disk.create_part(raw_disk, 'primary', efi_end, end_size)
                 _sp.run(['sudo', 'parted', '-s', raw_disk, 'set', str(efi_num), 'esp', 'on'], check=True)
-                base_system.udevadm_settle()
+                system.udevadm_settle()
                 disk_efi  = disk.get_partition_path(raw_disk, efi_num)
                 disk_root = disk.get_partition_path(raw_disk, root_num)
                 disk.create_filesystem(disk_efi, 'fat')
@@ -267,7 +267,7 @@ class InstallWorker(QObject):
                 disk.create_label(raw_disk, boot_mode)
                 if boot_mode == 'boot':
                     disk.create_part(raw_disk, 'primary', '1MiB', '100%', is_boot=True, part_num=1)
-                    base_system.udevadm_settle()
+                    system.udevadm_settle()
                     disk_root = disk.get_partition_path(raw_disk, 1)
                     disk_efi = None
                     disk.create_filesystem(disk_root, 'ext4')
@@ -276,7 +276,7 @@ class InstallWorker(QObject):
                     end_size = '100%' if part_size_gib is None else f'{part_size_gib}GiB'
                     disk.create_part(raw_disk, 'primary', '1MiB', '513MiB', fs_type='fat32')
                     disk.create_part(raw_disk, 'primary', '513MiB', end_size)
-                    base_system.udevadm_settle()
+                    system.udevadm_settle()
                     disk_efi  = disk.get_partition_path(raw_disk, 1)
                     disk_root = disk.get_partition_path(raw_disk, 2)
                     _sp.run(['sudo', 'parted', '-s', raw_disk, 'set', '1', 'esp', 'on'], check=True)
@@ -290,30 +290,30 @@ class InstallWorker(QObject):
             # 步骤 2：安装基础系统
             self.step.emit(2, INSTALL_STEPS[2][0])
             if kw.get('configure_mirrors', False):
-                base_system.configure_mirrors()
-            base_system.install_base('/mnt')
-            base_system.generate_fstab('/mnt')
+                system.configure_mirrors()
+            system.install_base('/mnt')
+            system.generate_fstab('/mnt')
 
             # 步骤 3：配置系统
             self.step.emit(3, INSTALL_STEPS[3][0])
-            base_system.write_file('/mnt', '/etc/locale.gen', 'zh_CN.UTF-8 UTF-8\n', 'a')
-            base_system.arch_chroot('/mnt', ['locale-gen'])
-            base_system.write_file('/mnt', '/etc/locale.conf', 'LANG=zh_CN.UTF-8\n')
-            base_system.arch_chroot('/mnt', ['ln', '-sf', f'/usr/share/zoneinfo/{timezone}', '/etc/localtime'])
-            base_system.write_file('/mnt', '/etc/hostname', f'{hostname}\n')
-            base_system.write_file('/mnt', '/etc/hosts',
+            system.write_file('/mnt', '/etc/locale.gen', 'zh_CN.UTF-8 UTF-8\n', 'a')
+            system.arch_chroot('/mnt', ['locale-gen'])
+            system.write_file('/mnt', '/etc/locale.conf', 'LANG=zh_CN.UTF-8\n')
+            system.arch_chroot('/mnt', ['ln', '-sf', f'/usr/share/zoneinfo/{timezone}', '/etc/localtime'])
+            system.write_file('/mnt', '/etc/hostname', f'{hostname}\n')
+            system.write_file('/mnt', '/etc/hosts',
                 f'127.0.0.1   localhost\n::1         localhost\n127.0.1.1   {hostname}.localdomain   {hostname}\n')
-            base_system.write_file('/mnt', '/etc/vconsole.conf', f'KEYMAP={kb_layout}\n')
+            system.write_file('/mnt', '/etc/vconsole.conf', f'KEYMAP={kb_layout}\n')
             # 创建用户
-            base_system.create_user('/mnt', username)
-            base_system.set_passwd('/mnt', username, userpwd)
-            base_system.set_passwd('/mnt', 'root', userpwd)
-            base_system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
+            system.create_user('/mnt', username)
+            system.set_passwd('/mnt', username, userpwd)
+            system.set_passwd('/mnt', 'root', userpwd)
+            system.write_file('/mnt', '/etc/sudoers.d/wheel', '%wheel ALL=(ALL:ALL) ALL\n')
             os.chmod('/mnt/etc/sudoers.d/wheel', 0o440)
-            base_system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
+            system.arch_chroot('/mnt', ['systemctl', 'enable', 'NetworkManager'])
 
             # 所有配置写完后重建 initramfs
-            base_system.arch_chroot('/mnt', ['mkinitcpio', '-P'])
+            system.arch_chroot('/mnt', ['mkinitcpio', '-P'])
 
             # 步骤 4：定制脚本（由 custom.py 内部处理）
             self.step.emit(4, INSTALL_STEPS[4][0])
@@ -323,14 +323,14 @@ class InstallWorker(QObject):
             # 步骤 5：引导
             self.step.emit(5, INSTALL_STEPS[5][0])
             if boot_mode == 'boot':
-                base_system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', kw['raw_disk']])
+                system.arch_chroot('/mnt', ['grub-install', '--target=i386-pc', kw['raw_disk']])
             else:
                 target = '--target=x86_64-efi' if boot_mode == 'uefi' else '--target=i386-efi'
-                base_system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
+                system.arch_chroot('/mnt', ['grub-install', target, '--efi-directory=/boot', '--bootloader-id=GRUB'])
             
-            base_system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
+            system.arch_chroot('/mnt', ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
 
-            base_system.umount_all()
+            system.umount_all()
             self.step.emit(6, INSTALL_STEPS[6][0])
             self.finished.emit(True, '')
 
