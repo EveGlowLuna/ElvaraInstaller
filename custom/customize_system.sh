@@ -37,8 +37,6 @@ chown -R "${username}:${username}" "/home/${username}"
 rm /etc/os-release
 cp etc/os-release /etc/os-release
 
-cd ..
-
 cp -a usr/local/share/applications/* /usr/local/share/applications/
 cp -a usr/local/share/pixmaps/* /usr/local/share/pixmaps/
 
