@@ -12,7 +12,13 @@ cd /tmp
 git clone https://aur.archlinux.org/yay.git
 chown -R nobody:nobody yay
 cd yay
-sudo -u nobody env GOPROXY=https://goproxy.cn,direct GOCACHE=/build/go-cache GOPATH=/build/go-cache makepkg --noconfirm
+# 自动检测国家，中国大陆使用 goproxy.cn 镜像
+_country=$(curl -sf --max-time 5 "https://ipapi.co/country_code" 2>/dev/null || true)
+if [[ "$_country" == "CN" ]]; then
+    sudo -u nobody env GOPROXY=https://goproxy.cn,direct GOCACHE=/build/go-cache GOPATH=/build/go-cache makepkg --noconfirm
+else
+    sudo -u nobody env GOCACHE=/build/go-cache GOPATH=/build/go-cache makepkg --noconfirm
+fi
 pacman -U --noconfirm yay-*.pkg.tar.zst
 cd ..
 rm -rf yay
